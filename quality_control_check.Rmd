@@ -1,0 +1,170 @@
+---
+title: "Quality control checks on data for age and life-support triage project"
+output:
+  html_document:
+    toc: yes
+    toc_depth: '2'
+    df_print: paged
+  pdf_document: default
+  html_notebook:
+    theme: journal
+    toc: yes
+    toc_depth: 2
+    toc_float: yes
+---
+
+```{r packages, results=FALSE, message=FALSE, warning=FALSE}
+library(dplyr)
+library(gtsummary)
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = TRUE)
+```
+
+# Introduction
+
+This script accepts a clean data file which has been appropriately formatted for this age and life-support triage project (see url: ) and performs various quality control checks on it.
+
+## Load data in and rearrange columns
+
+```{r data_in}
+
+data <- read.csv("C:/Users/t.cri.mhermsen/Documents/UCMC_data_clean/WashU/bjc_deidentified_2023-01-18.csv")
+
+data <- data %>%
+  arrange(patient, encounter, lfspprt_episode)
+```
+
+``` {r sofagroups, echo=FALSE}
+# create SOFA groups variable for table 1s
+data <- data %>%
+  group_by(encounter, lfspprt_episode) %>%
+  mutate(sofa_group = cut(sofa_total_48hr, breaks=c(-Inf, 7, 11, Inf),
+                          labels= c("SOFA 0-7",
+                                    "SOFA 8-11",
+                                    "SOFA > 11")))
+
+```
+
+# Initial sample statistics
+
+Create some tables of patient-level, encounter-level, and LSE-level statistics.
+
+First, examine patient-level demographtics. Note that race/ethnicity should be reported as a single variable with the following levels: Non-Hispanic White, Non-Hispanic Black, Hispanic, Other.
+```{r table1_pt, echo=FALSE}
+
+tbl1_pt <- data %>%
+  ungroup %>%
+  arrange(patient, encounter, lfspprt_episode) %>%
+  distinct(patient, .keep_all=TRUE) %>% # keeps first instance
+  select(age_years,
+         sex,
+         race,
+         died) %>%
+  tbl_summary(
+    label = list(age_years = "Age",
+                 race = "Race/ethnic group",
+                 sex = "Sex",
+                 died = "Death or discharge to hospice"),
+    statistic = age_years ~ "{mean} ({sd})"
+  )
+
+tbl1_pt
+
+```
+
+Histogram of patient ages:
+
+``` {r ages_hist, echo=FALSE}
+data %>%
+  ungroup() %>%
+  select(patient, age_years) %>%
+  distinct(patient, .keep_all=TRUE) %>%
+  pull(age_years) %>%
+  hist(main="Histogram of Patient Ages (in years)")
+
+```
+
+Youngest patient (should be 18 or older): `r min(data$age_years, na.rm=TRUE)`
+
+Oldest patient: `r max(data$age_years, na.rm=TRUE)`
+
+Encounter-level statistics:
+```{r table1_enc, echo=FALSE}
+
+tbl1_enc <- data %>%
+  ungroup %>%
+  arrange(patient, encounter, lfspprt_episode) %>%
+  distinct(encounter, .keep_all=TRUE) %>% # keeps first instance
+  select(died) %>%
+  tbl_summary(
+    label = list(died = "Death or discharge to hospice")
+  )
+
+tbl1_enc
+
+```
+
+Now, LSE-level statistics:
+```{r table1_lse, echo=FALSE}
+
+tbl1_lse <- data %>%
+  ungroup %>%
+  arrange(patient, encounter, lfspprt_episode) %>% # no filtering to do, each row is unique LSE
+  select(sofa_total_48hr,
+         sofa_group,
+         vent_ever,
+         died) %>%
+  tbl_summary(
+    label = list(sofa_total_48hr = "48-hour Maximum SOFA score at beginning of LSE",
+                 sofa_group = "SOFA distribution",
+                 vent_ever = "Ever on mechanical ventilation",
+                 died = "Death or discharge to hospice")
+  )
+
+tbl1_lse
+```
+
+## Examine number of patients and LSEs
+In the training data, there were approximately 3,611 patients corresponding to 5,648 LSEs (1.56 LSEs per patient, median 1 LSE per patient). The highest number of LSEs for a single patient was 18.
+``` {r pt_lse_comparison, echo=FALSE}
+num_pts <- data %>%
+  ungroup %>%
+  select(patient) %>%
+  unique() %>%
+  nrow()
+
+# if appropriately coded, data should already be 1 row per LSE
+num_lse <- data %>%
+  nrow()
+
+summary_lse <- data %>%
+  group_by(encounter) %>%
+  filter(lfspprt_episode == max(lfspprt_episode)) %>%
+  pull(lfspprt_episode) %>%
+  summary()
+
+```
+
+This dataset has `r num_pts` patients and `r num_lse` LSEs. There are approximately `r round(num_lse/num_pts,2)` LSEs per patient and a median of `r summary_lse["Median"]` LSEs. At least 1 patient in this dataset had `r summary_lse["Max."]` LSEs.
+
+Histograms of number of LSEs:
+
+``` {r lse_hist, echo=FALSE}
+data %>%
+  group_by(encounter) %>%
+  filter(lfspprt_episode == max(lfspprt_episode)) %>%
+  pull(lfspprt_episode) %>%
+  hist(main="Histogram of Number of LSEs (untrimmed)")
+```
+``` {r lse_hist_trimmed, echo=FALSE}
+data %>%
+  group_by(encounter) %>%
+  filter(lfspprt_episode == max(lfspprt_episode)) %>%
+  pull(lfspprt_episode) %>%
+  hist(main="Histogram of Number of LSEs (trimmed for viewing)",
+       xlim=c(0,30),
+       ylim=c(0, round(num_pts*0.75, 0)),
+       freq=TRUE)
+```
