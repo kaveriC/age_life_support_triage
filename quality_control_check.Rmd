@@ -16,6 +16,7 @@ output:
 ```{r packages, results=FALSE, message=FALSE, warning=FALSE}
 library(dplyr)
 library(gtsummary)
+library(pROC)
 ```
 
 ```{r setup, include=FALSE}
@@ -24,7 +25,7 @@ knitr::opts_chunk$set(echo = TRUE, cache = TRUE)
 
 # Introduction
 
-This script accepts a clean data file which has been appropriately formatted for this age and life-support triage project (see url: ) and performs various quality control checks on it.
+This script accepts a clean data file which has been appropriately formatted for this age and life-support triage project (see url: https://github.com/08wparker/age_life_support_triage) and performs various quality control checks on it.
 
 ## Load data in and rearrange columns
 
@@ -51,7 +52,7 @@ data <- data %>%
 
 Create some tables of patient-level, encounter-level, and LSE-level statistics.
 
-First, examine patient-level demographtics. Note that race/ethnicity should be reported as a single variable with the following levels: Non-Hispanic White, Non-Hispanic Black, Hispanic, Other.
+First, patient-level demographics. Note that race/ethnicity should be reported as a single variable with the following levels: Non-Hispanic White, Non-Hispanic Black, Hispanic, Other.
 ```{r table1_pt, echo=FALSE}
 
 tbl1_pt <- data %>%
@@ -126,6 +127,18 @@ tbl1_lse <- data %>%
 tbl1_lse
 ```
 
+Note: the "died" variable should be reported at the level of the LSE. That is, "died" should be 1 if the patient died at the end of the current LSE or 0 if the patient lived. Since each row corresponds to a unique LSE and patients may have more than one LSE, the variable "died" should take value 1 for exactly 1 row per patient.
+
+``` {r died, echo=FALSE}
+times_died <- data %>%
+  group_by(patient) %>%
+  summarise(times_died = sum(died)) %>%
+  pull(times_died) %>%
+  max(na.rm=TRUE)
+```
+
+In other words, each patient should die only once... In this dataset, that maximum number of times a patient died was `r times_died` times (again, should be 1).
+
 ## Examine number of patients and LSEs
 In the training data, there were approximately 3,611 patients corresponding to 5,648 LSEs (1.56 LSEs per patient, median 1 LSE per patient). The highest number of LSEs for a single patient was 18.
 ``` {r pt_lse_comparison, echo=FALSE}
@@ -168,3 +181,50 @@ data %>%
        ylim=c(0, round(num_pts*0.75, 0)),
        freq=TRUE)
 ```
+
+## Check Proportion of COVID positive
+Datasets should be filtered so that LSEs are coming from 90% COVID+ encounters and 10% COVID- encounters. See Github README (url in introduction) for details on how COVID positivity is defined.
+
+``` {r covid, echo=FALSE}
+covid_freq <- data %>%
+  ungroup() %>%
+  distinct(encounter, .keep_all=TRUE) %>%
+  pull(covid) %>%
+  mean()
+```
+
+In this dataset, `r covid_freq`% of your encounters were COVID+.
+
+## Examine SOFA Scores
+Discrete distributions of SOFA scores based on 3 categories (< 7, 8-11, > 11) can be found in the LSE-level Table 1 generated above.
+
+Histogram of 48-hour maximum SOFA scores at the beginning of LSE:
+
+``` {r sofa_hist, echo=FALSE}
+data %>%
+  ungroup() %>%
+  pull(sofa_total_48hr) %>%
+  hist(main="Histogram of 48-hour Maximum SOFA score at beginning of LSE")
+```
+
+Ideally, this histogram will show steadily decreasing numbers of higher SOFA scores (approximately geometric distribution).
+
+Lowest SOFA score (should be 0, 1, or 2): `r min(data$sofa_total_48hr, na.rm=TRUE)`
+
+Highest SOFA score (should be 24 or less): `r max(data$sofa_total_48hr, na.rm=TRUE)`
+
+Finally, we will examine how well SOFA alone predicts mortality. If coded accurately, it should be somewhat able to predict ICU mortality (though we aim to show this ability is much improved if age is also considered).
+
+For reference, 48-hour maximum SOFA score at the beginning of the LSE predicted LSE mortality with an AUC of 0.60.
+
+``` {r sofa_predict}
+lr <- glm(died ~ sofa_total_48hr,
+          data=data,
+          family="binomial")
+
+roc_score <- roc(response=data$died,
+                 predictor=lr$fitted.values,
+                 auc=TRUE)
+```
+
+In this dataset, 48-hour maximum SOFA score at the beginning of the LSE predicts LSE mortality with an AUC of `r roc_score$auc`.
