@@ -20,7 +20,7 @@ library(pROC)
 ```
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, cache = TRUE)
+knitr::opts_chunk$set(echo = TRUE)
 ```
 
 # Introduction
@@ -215,7 +215,7 @@ Highest SOFA score (should be 24 or less): `r max(data$sofa_total_48hr, na.rm=TR
 
 Finally, we will examine how well SOFA alone predicts mortality. If coded accurately, it should be somewhat able to predict ICU mortality (though we aim to show this ability is much improved if age is also considered).
 
-For reference, 48-hour maximum SOFA score at the beginning of the LSE predicted LSE mortality with an AUC of 0.60.
+For reference, 48-hour maximum SOFA score at the beginning of the LSE predicted LSE mortality with an AUC of 0.62.
 
 ``` {r sofa_predict}
 lr <- glm(died ~ sofa_total_48hr,
