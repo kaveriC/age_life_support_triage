@@ -31,7 +31,8 @@ This script accepts a clean data file which has been appropriately formatted for
 
 ```{r data_in}
 
-data <- read.csv("C:/Users/t.cri.mhermsen/Documents/UCMC_data_clean/WashU/bjc_deidentified_2023-01-18.csv")
+#data <- read.csv("C:/Users/t.cri.mhermsen/Documents/UCMC_data_clean/WashU/bjc_deidentified_2023-01-18.csv")
+data <- read.csv("C:/Users/t.cri.mhermsen/Documents/UCMC_data_clean/Run_UC_NW_train/data_for_analysis.csv")
 
 data <- data %>%
   arrange(patient, encounter, lfspprt_episode)
@@ -193,7 +194,7 @@ covid_freq <- data %>%
   mean()
 ```
 
-In this dataset, `r covid_freq`% of your encounters were COVID+.
+In this dataset, `r 100*covid_freq`% of your encounters were COVID+.
 
 ## Examine SOFA Scores
 Discrete distributions of SOFA scores based on 3 categories (< 7, 8-11, > 11) can be found in the LSE-level Table 1 generated above.
@@ -228,3 +229,51 @@ roc_score <- roc(response=data$died,
 ```
 
 In this dataset, 48-hour maximum SOFA score at the beginning of the LSE predicts LSE mortality with an AUC of `r roc_score$auc`.
+
+## Examine SOFA Sub-Scores
+
+Note: each of these 48-hour maximum sub-scores are at the beginning of the specified LSE.
+
+This section requires that data contain columns for each 48-hour maximum sub-score, which may not have been supplied by other institutions. If the data does not contain these columns (such as "sofa_cv_48hr"), then do not run the chunks in this section.
+
+``` {r sofa_cv_hist, echo=FALSE}
+data %>%
+  ungroup() %>%
+  pull(sofa_cv_48hr) %>%
+  hist(main="Histogram of 48-hour Maximum SOFA Cardiovascular Sub-score")
+```
+
+``` {r sofa_resp_hist, echo=FALSE}
+data %>%
+  ungroup() %>%
+  pull(sofa_resp_48hr) %>%
+  hist(main="Histogram of 48-hour Maximum SOFA Respiratory Sub-score")
+```
+
+``` {r sofa_renal_hist, echo=FALSE}
+data %>%
+  ungroup() %>%
+  pull(sofa_renal_48hr) %>%
+  hist(main="Histogram of 48-hour Maximum SOFA Renal Sub-score")
+```
+
+``` {r sofa_liver_hist, echo=FALSE}
+data %>%
+  ungroup() %>%
+  pull(sofa_liver_48hr) %>%
+  hist(main="Histogram of 48-hour Maximum SOFA Liver Sub-score")
+```
+
+``` {r sofa_coags_hist, echo=FALSE}
+data %>%
+  ungroup() %>%
+  pull(sofa_coags_48hr) %>%
+  hist(main="Histogram of 48-hour Maximum SOFA Coagulation Sub-score")
+```
+
+``` {r sofa_neuro_hist, echo=FALSE}
+data %>%
+  ungroup() %>%
+  pull(sofa_neuro_48hr) %>%
+  hist(main="Histogram of 48-hour Maximum SOFA Neurologic Sub-score")
+```
