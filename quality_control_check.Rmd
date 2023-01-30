@@ -31,11 +31,13 @@ This script accepts a clean data file which has been appropriately formatted for
 
 ```{r data_in}
 
-#data <- read.csv("C:/Users/t.cri.mhermsen/Documents/UCMC_data_clean/WashU/bjc_deidentified_2023-01-18.csv")
-data <- read.csv("C:/Users/t.cri.mhermsen/Documents/UCMC_data_clean/Run_UC_NW_train/data_for_analysis.csv")
+data <- read.csv("C:/Users/t.cri.mhermsen/Documents/UCMC_data_clean/WashU/bjc_deidentified_2023-01-28.csv") %>%
+  rename(died = dead)
+#data <- read.csv("C:/Users/t.cri.mhermsen/Documents/UCMC_data_clean/Run_UC_NW_train/data_for_analysis.csv")
 
 data <- data %>%
   arrange(patient, encounter, lfspprt_episode)
+
 ```
 
 ``` {r sofagroups, echo=FALSE}
@@ -236,42 +238,42 @@ Note: each of these 48-hour maximum sub-scores are at the beginning of the speci
 
 This section requires that data contain columns for each 48-hour maximum sub-score, which may not have been supplied by other institutions. If the data does not contain these columns (such as "sofa_cv_48hr"), then do not run the chunks in this section.
 
-``` {r sofa_cv_hist, echo=FALSE}
+``` {r sofa_cv_hist, echo=FALSE, eval=FALSE}
 data %>%
   ungroup() %>%
   pull(sofa_cv_48hr) %>%
   hist(main="Histogram of 48-hour Maximum SOFA Cardiovascular Sub-score")
 ```
 
-``` {r sofa_resp_hist, echo=FALSE}
+``` {r sofa_resp_hist, echo=FALSE, eval=FALSE}
 data %>%
   ungroup() %>%
   pull(sofa_resp_48hr) %>%
   hist(main="Histogram of 48-hour Maximum SOFA Respiratory Sub-score")
 ```
 
-``` {r sofa_renal_hist, echo=FALSE}
+``` {r sofa_renal_hist, echo=FALSE, eval=FALSE}
 data %>%
   ungroup() %>%
   pull(sofa_renal_48hr) %>%
   hist(main="Histogram of 48-hour Maximum SOFA Renal Sub-score")
 ```
 
-``` {r sofa_liver_hist, echo=FALSE}
+``` {r sofa_liver_hist, echo=FALSE, eval=FALSE}
 data %>%
   ungroup() %>%
   pull(sofa_liver_48hr) %>%
   hist(main="Histogram of 48-hour Maximum SOFA Liver Sub-score")
 ```
 
-``` {r sofa_coags_hist, echo=FALSE}
+``` {r sofa_coags_hist, echo=FALSE, eval=FALSE}
 data %>%
   ungroup() %>%
   pull(sofa_coags_48hr) %>%
   hist(main="Histogram of 48-hour Maximum SOFA Coagulation Sub-score")
 ```
 
-``` {r sofa_neuro_hist, echo=FALSE}
+``` {r sofa_neuro_hist, echo=FALSE, eval=FALSE}
 data %>%
   ungroup() %>%
   pull(sofa_neuro_48hr) %>%
