@@ -1,29 +1,33 @@
 # age_life_support_triage
 
-The **Common Longitudinal ICU Data Format (CLIF)** is a standardized longitudinal (long) tidy dataset with one observation per patient per hour designed to study critically ill patients hospitalized in Intensive Care Units (ICU). These are clinical areas of the hospital where patients receive high frequency monitoring, such as hourly vital signs and nursing assessments. The basic CLIF contains demographics (age, sex, self-identified race and ethnicity), chronic condition data (summarized with the Agency for Healthcare Research and Quality elixhauser score, and Charlston comorbidity index), nine-digit zip code, time-dependent clinical variables (laboratory markers of end-organ function, COVID status, vital signs, nursing assessments), time-dependent treatment variables (respiratory support, vasoactive drips, continuous renal replacement therapy) and a status variable to denote the patient's status and location at the end of the hour interval.
-
-
-This README file contains detailed instructions for coding your healthcare system's EHR data into CLIF. This repository also contains two analysis scripts, both of which accepts a clean, long form patient dataset in CLIF.
+This README file explains how the coding and data preparation was performed for data corresonding to the paper titled "Age as a prognostic factor for short-term survival in critically ill patients and use in life support allocation under crisis standards of care." This repository also contains several scripts: a quality control script to run on a single institution's data, a script to analyze training data, a script to analyze testing/validation data, and a script converting data from CLIF format into the appropriate format for the remaining scripts. For information on CLIF, see https://github.com/08wparker/Common-Long-ICU-Format.
 
 1. quality_control_check.rmd - performs various quality control checks on the data
-2. simulation_inputs.rmd - generates a set of aggregate inputs for the ICU Crisis Simulation Model (ICSM), a discrete event microsimulation model of ICU allocation in a crisis scenario. CLIF was first designed for this application.
+2. analysis_test.rmd - performs analysis and generates figures for data from institutions contributing to "training set"
+3. analysis_train.rmd - performs analysis and generates figures for data from institutions contributing to "testing set"
+4. data_prep.rmd - starts with data in CLIF-like format and format for use in scripts above
 
+## Common Long ICU Format (CLIF)
 
-## Sample of data prepared in CLIF
+Data was prepared according to the CLIF standards with a few changes. Race and ethnicity were combined into a single category "race/ethnicity" with levels "Non-Hispanic White", "Non-Hispanic Black", "Hispanic", and "Other". In addition to a standard SOFA score variable, a 48-hour maximum total SOFA score (calculated on a running window from prior 48-hours) was also calculated using data from prior to and including timepoints when the patient was in an ICU. **lfspprt_episode** is an additional variable necessary for this project, but not included in CLIF. See section below on Life Support Episodes. Data in this CLIF-like format is then collapsed to a single row per life support episode using data_prep.rmd, and the variables vent_ever and died are created in the process.
 
-Below is a sample patient in record prepared in CLIF.
+## Sample of prepared data
 
-| encounter | time_icu | sofa_total | age | sex |race  | ethnicity    | elix_ahrq |charlson    | vent | status | covid |  zip       |
-|-----------|----------|------------|-----------|-------|-------|--------------|----------|------------|------|--------|-------|------------|
-| 1         | 0        | 6          | 75        | male |White | Non-hispanic |19        | 3          | 0    | icu    |  1    | XXXXX-YYYY |
-| 1         | 1        | 6          | 75        | male |White | Non-hispanic |19        | 3          | 0    | icu    |  1    | XXXXX-YYYY |
-| 1         | 2        | 7          | 75        | male |White | Non-hispanic |19        | 3          | 0    | icu    |  1    | XXXXX-YYYY |
+Below is a sample patient in record prepared after running data_prep.rmd on CLIF-like starting point.
 
-Only key columns are included in sample above, but the full CLIF contains all the data variables mentioned below as well as all SOFA sub-components.
+| encounter | patient | lfspprt_episode | sofa_total_48hr | age | sex  |race/ethnicity      | vent_ever | died | covid |  zip       |
+|-----------|---------|-----------------|-----------------|-----|------|--------------------|-----------|------|-------|------------|
+| 1         | 1       | 1               | 6               | 75  | male | Non-hispanic White | 0         | 0    |  1    | XXXXX-YYYY |
+| 1         | 1       | 2               | 7               | 75  | male | Non-hispanic White | 0         | 0    |  1    | XXXXX-YYYY |
+| 1         | 1       | 3               | 10              | 75  | male | Non-hispanic White | 0         | 0    |  1    | XXXXX-YYYY |
 
-**encounter** is an ID variable for each ICU stay (so a given patient can have multiple values), so please also include a second **patient** ID variable.
+Only necessary columns are included in sample above, but the full data may contain all the data variables mentioned above as well as all 48-hour maximum SOFA sub-components.
 
-## Patient populations for CLIF
+Together, **encounter**, **patient**, and **lfspprt_episode** uniquely identify a life support episode, as a given patient can have multiple encounters (i.e. hospital admissions), and any given encounter can have multiple life support episodes.
+
+## Life Support Episodes
+
+CONTINUE EDITING HERE
 
 What exactly consitutes an ICU varies significantly between hospitals. When preparing data in CLIF, be inclusive of all patients who are considered ICU status, as collaborators writing scripts prepared for CLIF can filter down to their desired patient population. For example, the study population for the ICSM project is all patients who would unambiguously need life-support in an ICU during a crisis (inclusion criteria below).
 
