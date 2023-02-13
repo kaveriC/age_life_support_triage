@@ -60,10 +60,10 @@ Prior to collapsing data into a single row per LSE, a total SOFA score and compo
 
 ### Cardiovascular sub-score
 
-Values were assigned based on number of pressors, not dose.
+Values were assigned based on mean arterial pressure (MAP) and number of pressors (but not pressor dose).
 
 * MAP > 70, no pressors -> 0
-* Map < 70, no pressors -> 1
+* MAP < 70, no pressors -> 1
 * Dobutamine alone -> 2
 * 1 pressor -> 3
 * 2 or more pressors -> 4
@@ -85,12 +85,12 @@ Values were based on the PaO2/Fio2 ratio (P/F).
 * 100 < P/F <= 200 and receiving ventilatory support -> 3
 * P/F <= 100 and receiving ventilatory support -> 4
 
-If P/F is not available *or is more than 4 hours old*, we used the SaO2/FiO2:
-* SF > 400 -> 0
+If P/F is not available *or is more than 4 hours old*, we used the SaO2/FiO2 ratio (S/F):
+* S/F > 400 -> 0
 * 315 < S/F <= 400 -> 1
-* 235 < SF <= 315 and receiving ventilatory support or S/F <= 315 and not receiving ventilatory support ->  2
-* 150 < SF <= 235 and receiving ventilatory support -> 3
-* SF <= 150 and receiving ventilatory support -> 4
+* 235 < S/F <= 315 and receiving ventilatory support or S/F <= 315 and not receiving ventilatory support ->  2
+* 150 < S/F <= 235 and receiving ventilatory support -> 3
+* S/F <= 150 and receiving ventilatory support -> 4
 
 In other words, P/F ratios were only carried forward for a maximum of 4 hours. This an exception to the rule that missing values should be replaced by previous values carried forward with no time limit. The rationale for this rule is that a P/F ratio (which necessarily comes from an ABG) may not accurately represent a patient's respiratory status 4 or more hours after the ABG was drawn. This may be particularly true among patients whose respiratory status improves (a repeat ABG may not be ordered if it is clinically apparent the patient is doing better).
 
