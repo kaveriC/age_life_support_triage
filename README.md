@@ -5,7 +5,7 @@ This README file explains how the coding and data preparation was performed for 
 1. quality_control_check.rmd - performs various quality control checks on the data
 2. analysis_test.rmd - performs analysis and generates figures for data from institutions contributing to "training set"
 3. analysis_train.rmd - performs analysis and generates figures for data from institutions contributing to "testing set"
-4. data_prep.rmd - starts with data in CLIF-like format and format for use in scripts above
+4. data_prep.rmd - starts with data in CLIF-like format and formats for use in scripts above
 
 ## Common Long ICU Format (CLIF)
 
