@@ -72,7 +72,7 @@ Patients were determined to be receiving a medication during a given hour if the
 
 DOUBLE CHECK THIS NUMBER!
 
-Medications considered vasopressors were epinephrine, norepinephrine, phenylephrine, vasopressin, angiotensin II, dopamine delivered in IV form. Although technically not a vasopressor, dobutamine was also considered as a pressor for coding purposes. Receipt of push dose epinephrine (> 0.5 mg) was not considered receipt of a pressor.
+Medications considered vasopressors were intravenous forms of epinephrine, norepinephrine, phenylephrine, vasopressin, angiotensin II, and dopamine. Although technically not a vasopressor, dobutamine was also considered as a pressor for coding purposes. Receipt of push dose epinephrine (> 0.5 mg) was not considered receipt of a pressor.
 
 DOUBLE CHEDK THIS NUMBER!
 
