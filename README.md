@@ -27,7 +27,7 @@ Together, **encounter**, **patient**, and **lfspprt_episode** uniquely identify 
 
 ## Life Support Episodes
 
-In looking at Crisis Standards of Care protocols, we wanted to include all patients who would unambiguously need life-support in an ICU during a crisis (inclusion criteria below). During a truly massive crisis, when rationing of critical care is required, some patients who would otherwise be in an ICU may be transferred to general ward floors. To capture the patients who need life support, we defined life support episodes (LSEs). An LSE is a period of time during which any of the following criteria are met:
+In looking at Crisis Standards of Care protocols, we wanted to include all patients who would unambiguously need life-support in an ICU during a crisis (inclusion criteria below). During a truly massive crisis, when rationing of critical care is required, some patients who would otherwise be in an ICU may be transferred to general ward floors. To capture the patients who need definitively need life support, we defined life support episodes (LSEs). An LSE is a period of time during which any of the following criteria are met:
 
 1) requiring invasive or non-invasive mechanical ventilation
 2) hypoxic respiratory failure with an estimated arterial pressure of oxygen (PaO2) to fraction of inspired oxygen gas (FiO2) ratio less than 200
