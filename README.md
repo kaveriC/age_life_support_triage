@@ -68,29 +68,25 @@ Values were assigned based on mean arterial pressure (MAP) and number of pressor
 * 1 pressor -> 3
 * 2 or more pressors -> 4
 
-Patients were determined to be receiving a medication during a given hour if they were recorded as receiving a non-zero dose of that medication during that hour. They were considered to be receiving this medication until a dose value of 0 was recorded or no dose information was reported for 4 hours.
+Patients were determined to be receiving a medication during a given hour if they were recorded as receiving a non-zero dose of that medication during that hour. They were considered to be receiving this medication until a dose value of 0 was recorded or no dose information was recorded for > 2 consecutive hours (i.e. the 3rd hour of no dose information would default to dose value of 0).
 
-DOUBLE CHECK THIS NUMBER!
-
-Medications considered vasopressors were intravenous forms of epinephrine, norepinephrine, phenylephrine, vasopressin, angiotensin II, and dopamine. Although technically not a vasopressor, dobutamine was also considered as a pressor for coding purposes. Receipt of push dose epinephrine (> 0.5 mg) was not considered receipt of a pressor.
-
-DOUBLE CHEDK THIS NUMBER!
+Medications considered vasopressors were intravenous forms of epinephrine, norepinephrine, phenylephrine, vasopressin, angiotensin II, and dopamine. Receipt of push dose epinephrine (generally 1 mg/mL or labeled as "injection" or "syringe") was not considered receipt of a pressor.
 
 ### Respiratory sub-score
 
 Values were based on the PaO2/Fio2 ratio (P/F).
-* P/F > 400 -> 0
-* 300 < P/F <= 400 -> 1
-* 200 < P/F <= 300 and receiving ventilatory support or P/F <= 300 and not receiving ventilatory support ->  2
-* 100 < P/F <= 200 and receiving ventilatory support -> 3
-* P/F <= 100 and receiving ventilatory support -> 4
+* P/F >= 400 -> 0
+* 300 =< P/F < 400 -> 1
+* 200 =< P/F < 300 and receiving ventilatory support or P/F < 200 and not receiving ventilatory support ->  2
+* 100 =< P/F < 200 and receiving ventilatory support -> 3
+* P/F < 100 and receiving ventilatory support -> 4
 
 If P/F is not available *or is more than 4 hours old*, we used the SaO2/FiO2 ratio (S/F):
-* S/F > 400 -> 0
-* 315 < S/F <= 400 -> 1
-* 235 < S/F <= 315 and receiving ventilatory support or S/F <= 315 and not receiving ventilatory support ->  2
-* 150 < S/F <= 235 and receiving ventilatory support -> 3
-* S/F <= 150 and receiving ventilatory support -> 4
+* S/F >= 400 -> 0
+* 315 =< S/F < 400 -> 1
+* 235 =< S/F < 315 and receiving ventilatory support or S/F < 235 and not receiving ventilatory support ->  2
+* 150 =< S/F < 235 and receiving ventilatory support -> 3
+* S/F < 150 and receiving ventilatory support -> 4
 
 In other words, P/F ratios were only carried forward for a maximum of 4 hours. This an exception to the rule that missing values should be replaced by previous values carried forward with no time limit. The rationale for this rule is that a P/F ratio (which necessarily comes from an ABG) may not accurately represent a patient's respiratory status 4 or more hours after the ABG was drawn. This may be particularly true among patients whose respiratory status improves (a repeat ABG may not be ordered if it is clinically apparent the patient is doing better).
 
@@ -104,33 +100,33 @@ In other words, P/F ratios were only carried forward for a maximum of 4 hours. T
 
 ### Renal sub-score
 
-Values were assigned based only on creatinine (Cr) values.
-* Cr <= 1.2 and not on dialysis -> 0
-* 1.2 < Cr <= 1.9 and not on dialysis -> 1
-* 1.9 < Cr <= 3.4 and not on dialysis -> 2
-* 3.4 < Cr <= 4.9 and not on dialysis -> 3
-* Cr > 4.9 or on dialysis -> 4
+Values were assigned based on creatinine (Cr) values measured in mg/dL.
+* Cr < 1.2 and not on dialysis -> 0
+* 1.2 =< Cr < 2.0 and not on dialysis -> 1
+* 2.0 =< Cr < 3.5 and not on dialysis -> 2
+* 3.5 =< Cr < 5.0 and not on dialysis -> 3
+* Cr > 5.0 or on dialysis -> 4
 
 Urine output was ignored because urine output is often inaccurately charted or not charted at all. After receipt of dialysis, the patient's SOFA renal score of 4 was carried forward for 72 hours and no further. After that time, the renal score was based on the most recent creatinine value. This is another exception to the rule that missing values should be replaced by previous values carried forward with no time limit. Coding dialysis receipt in this way means patients who were briefly taken off CVVHD (< 72 hours) were considered "on dialysis" even during the brief hours in between actual receipt of CVVHD. Additionally, patients receiving intermittent dialysis were also considered "on dialysis" in between sessions (for 72 hours).
 
 ### Liver sub-score
 
-For total bilirubin (Tbili) measured in mg/dl:
-* Tbili <= 1.2 -> 0
-* 1.2 < Tbili <= 2.0 -> 1
-* 2.0 < Tbili <= 6.0 -> 2
-* 6.0 < Tbili <= 12 -> 3
-* Tbili > 12 -> 4
+For total bilirubin (Tbili) measured in mg/dL:
+* Tbili < 1.2 -> 0
+* 1.2 =< Tbili < 2.0 -> 1
+* 2.0 =< Tbili < 6.0 -> 2
+* 6.0 =< Tbili < 12 -> 3
+* Tbili >= 12 -> 4
 
 ### Coagulation sub-score
 
-For platelet count (PLT) in 10^3 per uL:
+For platelet count (PLT) in 10^3 platelets per uL:
 
-* PLT > 150 -> 0
-* 100 > PLT >= 150 -> 1
-* 50 > PLT >= 100 -> 2
-* 20 > PLT >= 50 -> 3
-* PLT <= 20 -> 4
+* PLT >= 150 -> 0
+* 100 >= PLT > 150 -> 1
+* 50 >= PLT > 100 -> 2
+* 20 >= PLT > 50 -> 3
+* PLT < 20 -> 4
 
 ### Neurologic sub-score
 
