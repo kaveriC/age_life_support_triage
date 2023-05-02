@@ -1,0 +1,924 @@
+---
+title: "analysis_train"
+author: "Michael Hermsen"
+date: "2023-05-02"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Set up
+
+This script will be used to make figures/results for the age/CSC project.
+
+Variables should be:
+
+* encounter
+* patient
+* lfspprt_episode
+* sofa_total_48hr
+* age_years
+* race
+* covid
+* died
+* vent_ever
+
+In this script, the data is assumed to be 1 row per life support episode, with
+the 48-hour maximum SOFA score calculated at the beginning of the LSE.
+
+```{r load_libs, message=FALSE}
+library(ggplot2)
+library(pROC)
+library(dplyr)
+library(rms)
+library(gtsummary)
+library(splines)
+library(caret)
+library(webshot)
+library(tidyr)
+library(CalibrationCurves)
+```
+
+
+```{r load_data, include=FALSE}
+
+# Set your path to training data here
+setwd("C:/Users/t.cri.mhermsen/Documents/UCMC_data_clean/Run_UC_NW_train")
+
+# make sure to load UC data first
+data <- read.csv("data_for_analysis.csv")  %>%
+  arrange(encounter, lfspprt_episode)
+
+# flag data as UC
+data$UC <- 1
+
+# set path to NW data here, if different
+# setwd()
+
+# now load NW data
+# read.csv()
+
+# rbind UC + NW data together, save as "data"
+# data <- data %>% rbind()
+
+# flag NW as testing set
+data$UC <- ifelse(is.na(data$UC), 0, data$UC)
+
+```
+
+## Table 1
+
+We will create several "Table 1s" in this script. Some will be generated based on
+all data (UC + NW combined), and others will be generated based on only UC or NW
+data. Additionally, we will have tables generated at the patient, LSE, and encounter level.
+
+``` {r tab1_sofagroups, echo=FALSE}
+# create SOFA groups variable for table 1s
+data <- data %>%
+  group_by(encounter, lfspprt_episode) %>%
+  mutate(sofa_group = cut(sofa_total_48hr, breaks=c(-Inf, 7, 11, Inf),
+                          labels= c("SOFA 0-7",
+                                    "SOFA 8-11",
+                                    "SOFA > 11")))
+
+```
+
+Patient Level Table 1 (UC and NW Data)
+```{r table1_UCNW_pt, echo=FALSE}
+
+tbl1_UCNW_pt <- data %>%
+  ungroup %>%
+  arrange(patient, encounter, lfspprt_episode) %>%
+  distinct(patient, .keep_all=TRUE) %>% # keeps first instance
+  select(age_years,
+         sex,
+         race,
+         sofa_total_48hr,
+         sofa_group,
+         vent_ever,
+         died) %>%
+  tbl_summary(
+    label = list(age_years = "Age",
+                 sofa_total_48hr = "48-hour Maximum SOFA score at beginning of LSE",
+                 sofa_group = "SOFA distribution",
+                 vent_ever = "Ever on mechanical ventilation",
+                 race = "Race/ethnic group",
+                 sex = "Sex",
+                 died = "Death or discharge to hospice"),
+    statistic = age_years ~ "{mean} ({sd})"
+  )
+
+tbl1_UCNW_pt
+
+save(tbl1_UCNW_pt, file="table1_UCNW_pt.RData")
+
+gt::gtsave(as_gt(tbl1_UCNW_pt), filename = "table1_UCNW_pt.png")
+
+```
+Patient Level Table 1 (UC data only)
+``` {r table1_UC_pt, echo=FALSE}
+
+data_UC <- data %>%
+  filter(UC == 1)
+
+
+tbl1_UC_pt <- data_UC %>%
+  ungroup %>%
+  arrange(patient, encounter, lfspprt_episode) %>%
+  distinct(patient, .keep_all=TRUE) %>% # keeps first instance
+  select(age_years,
+         sex,
+         race,
+         sofa_total_48hr,
+         sofa_group,
+         vent_ever,
+         died) %>%
+  tbl_summary(
+    label = list(age_years = "Age",
+                 sofa_total_48hr = "48-hour Maximum SOFA score at beginning of LSE",
+                 sofa_group = "SOFA distribution",
+                 vent_ever = "Ever on mechanical ventilation",
+                 race = "Race/ethnic group",
+                 sex = "Sex",
+                 died = "Death or discharge to hospice"),
+    statistic = age_years ~ "{mean} ({sd})"
+  )
+
+tbl1_UC_pt
+
+save(tbl1_UC_pt, file="table1_UC_pt.RData")
+
+gt::gtsave(as_gt(tbl1_UC_pt), filename = "table1_UC_pt.png")
+
+```
+
+Patient Level Table 1 (NW data only)
+``` {r table1_NW_pt, echo=FALSE, eval=FALSE}
+
+data_NW <- data %>%
+  filter(UC == 0)
+
+
+tbl1_NW_pt <- data_NW %>%
+  ungroup %>%
+  arrange(patient, encounter, lfspprt_episode) %>%
+  distinct(patient, .keep_all=TRUE) %>% # keeps first instance
+  select(age_years,
+         sex,
+         race,
+         sofa_total_48hr,
+         sofa_group,
+         vent_ever,
+         died) %>%
+  tbl_summary(
+    label = list(age_years = "Age",
+                 sofa_total_48hr = "48-hour Maximum SOFA score at beginning of LSE",
+                 sofa_group = "SOFA distribution",
+                 vent_ever = "Ever on mechanical ventilation",
+                 race = "Race/ethnic group",
+                 sex = "Sex",
+                 died = "Death or discharge to hospice"),
+    statistic = age_years ~ "{mean} ({sd})"
+  )
+
+tbl1_NW_pt
+
+save(tbl1_NW_pt, file="table1_NW_pt.RData")
+
+gt::gtsave(as_gt(tbl1_NW_pt), filename = "table1_NW_pt.png")
+
+```
+
+Encounter Level Table 1 (UC and NW data)
+``` {r table1_UCNW_enc, echo=FALSE}
+tbl1_UCNW_enc <- data %>%
+  ungroup %>%
+  arrange(encounter, lfspprt_episode) %>%
+  distinct(encounter, .keep_all=TRUE) %>% # keeps first instance
+  select(age_years,
+         sex,
+         race,
+         sofa_total_48hr,
+         sofa_group,
+         vent_ever,
+         died) %>%
+  tbl_summary(
+    label = list(age_years = "Age",
+                 sofa_total_48hr = "48-hour Maximum SOFA score at beginning of LSE",
+                 sofa_group = "SOFA distribution",
+                 vent_ever = "Ever on mechanical ventilation",
+                 race = "Race/ethnic group",
+                 sex = "Sex",
+                 died = "Death or discharge to hospice"),
+    statistic = age_years ~ "{mean} ({sd})"
+  )
+
+tbl1_UCNW_enc
+
+save(tbl1_UCNW_enc, file="table1_UCNW_enc.RData")
+
+gt::gtsave(as_gt(tbl1_UCNW_enc), filename = "table1_UCNW_enc.png")
+```
+
+Encounter Level Table 1 (UC data only)
+``` {r table1_UC_enc, echo=FALSE}
+
+tbl1_UC_enc <- data_UC %>%
+  ungroup %>%
+  arrange(encounter, lfspprt_episode) %>%
+  distinct(encounter, .keep_all=TRUE) %>% # keeps first instance
+  select(age_years,
+         sex,
+         race,
+         sofa_total_48hr,
+         sofa_group,
+         vent_ever,
+         died) %>%
+  tbl_summary(
+    label = list(age_years = "Age",
+                 sofa_total_48hr = "48-hour Maximum SOFA score at beginning of LSE",
+                 sofa_group = "SOFA distribution",
+                 vent_ever = "Ever on mechanical ventilation",
+                 race = "Race/ethnic group",
+                 sex = "Sex",
+                 died = "Death or discharge to hospice"),
+    statistic = age_years ~ "{mean} ({sd})"
+  )
+
+tbl1_UC_enc
+
+save(tbl1_UC_enc, file="table1_UC_enc.RData")
+
+gt::gtsave(as_gt(tbl1_UC_enc), filename = "table1_UC_enc.png")
+```
+
+Encounter Level Table 1 (NW data only)
+``` {r table1_NW_enc, echo=FALSE, eval=FALSE}
+
+tbl1_NW_enc <- data_NW %>%
+  ungroup %>%
+  arrange(encounter, lfspprt_episode) %>%
+  distinct(encounter, .keep_all=TRUE) %>% # keeps first instance
+  select(age_years,
+         sex,
+         race,
+         sofa_total_48hr,
+         sofa_group,
+         vent_ever,
+         died) %>%
+  tbl_summary(
+    label = list(age_years = "Age",
+                 sofa_total_48hr = "48-hour Maximum SOFA score at beginning of LSE",
+                 sofa_group = "SOFA distribution",
+                 vent_ever = "Ever on mechanical ventilation",
+                 race = "Race/ethnic group",
+                 sex = "Sex",
+                 died = "Death or discharge to hospice"),
+    statistic = age_years ~ "{mean} ({sd})"
+  )
+
+tbl1_NW_enc
+
+save(tbl1_NW_enc, file="table1_NW_enc.RData")
+
+gt::gtsave(as_gt(tbl1_NW_enc), filename = "table1_NW_enc.png")
+```
+
+LSE Level Table 1 (UC and NW data)
+``` {r table1_UCNW_lse, echo=FALSE}
+
+tbl1_UCNW_lse <- data %>%
+  ungroup %>%
+  arrange(encounter, lfspprt_episode) %>% # no need to restrict rows... each row is already distinct LSE
+  select(age_years,
+         sex,
+         race,
+         sofa_total_48hr,
+         sofa_group,
+         vent_ever,
+         died) %>%
+  tbl_summary(
+    label = list(age_years = "Age",
+                 sofa_total_48hr = "48-hour Maximum SOFA score at beginning of LSE",
+                 sofa_group = "SOFA distribution",
+                 vent_ever = "Ever on mechanical ventilation",
+                 race = "Race/ethnic group",
+                 sex = "Sex",
+                 died = "Death or discharge to hospice"),
+    statistic = age_years ~ "{mean} ({sd})"
+  )
+
+tbl1_UCNW_lse
+
+save(tbl1_UCNW_lse, file="table1_UCNW_lse.RData")
+
+gt::gtsave(as_gt(tbl1_UCNW_lse), filename = "table1_UCNW_lse.png")
+```
+
+LSE Level Table 1 (UC data only)
+``` {r table1_UC_lse, echo=FALSE}
+
+tbl1_UC_lse <- data_UC %>%
+  ungroup %>%
+  arrange(encounter, lfspprt_episode) %>% # no need to restrict rows... each row is already distinct LSE
+  select(age_years,
+         sex,
+         race,
+         sofa_total_48hr,
+         sofa_group,
+         vent_ever,
+         died) %>%
+  tbl_summary(
+    label = list(age_years = "Age",
+                 sofa_total_48hr = "48-hour Maximum SOFA score at beginning of LSE",
+                 sofa_group = "SOFA distribution",
+                 vent_ever = "Ever on mechanical ventilation",
+                 race = "Race/ethnic group",
+                 sex = "Sex",
+                 died = "Death or discharge to hospice"),
+    statistic = age_years ~ "{mean} ({sd})"
+  )
+
+tbl1_UC_lse
+
+save(tbl1_UC_lse, file="table1_UC_lse.RData")
+
+gt::gtsave(as_gt(tbl1_UC_lse), filename = "table1_UC_lse.png")
+```
+
+LSE Level Table 1 (NW data only)
+``` {r table1_NW_lse, echo=FALSE, eval=FALSE}
+
+tbl1_NW_lse <- data_NW %>%
+  ungroup %>%
+  arrange(encounter, lfspprt_episode) %>% # no need to restrict rows... each row is already distinct LSE
+  select(age_years,
+         sex,
+         race,
+         sofa_total_48hr,
+         sofa_group,
+         vent_ever,
+         died) %>%
+  tbl_summary(
+    label = list(age_years = "Age",
+                 sofa_total_48hr = "48-hour Maximum SOFA score at beginning of LSE",
+                 sofa_group = "SOFA distribution",
+                 vent_ever = "Ever on mechanical ventilation",
+                 race = "Race/ethnic group",
+                 sex = "Sex",
+                 died = "Death or discharge to hospice"),
+    statistic = age_years ~ "{mean} ({sd})"
+  )
+
+tbl1_NW_lse
+
+save(tbl1_NW_lse, file="table1_NW_lse.RData")
+
+gt::gtsave(as_gt(tbl1_NW_lse), filename = "table1_NW_lse.png")
+```
+
+## View mortality by age and SOFA group
+
+``` {r age_groups, echo=FALSE, include=FALSE}
+
+age_groups <- data %>%
+  ungroup() %>%
+  select(age_years, died, sofa_total_48hr, sofa_group) %>%
+  mutate(decile = cut(x=age_years,
+                      breaks=c(-Inf, 40, 50, 60, 70, 80, Inf)))
+
+age_group1 <- age_groups %>%
+  filter(sofa_total_48hr < 8) %>%
+  group_by(decile) %>%
+  summarise(mortality = mean(died))
+age_group1_counts <- age_groups %>%
+  filter(sofa_total_48hr < 8) %>%
+  pull(decile) %>%
+  table()
+age_group1$count <- as.numeric(age_group1_counts)
+
+age_group2 <- age_groups %>%
+  filter(sofa_total_48hr >= 8 & sofa_total_48hr <= 11) %>%
+  group_by(decile) %>%
+  summarise(mortality = mean(died))
+age_group2_counts <- age_groups %>%
+  filter(sofa_total_48hr >= 8 & sofa_total_48hr <= 11) %>%
+  pull(decile) %>%
+  table()
+age_group2$count <- as.numeric(age_group2_counts)
+
+age_group3 <- age_groups %>%
+  filter(sofa_total_48hr > 11) %>%
+  group_by(decile) %>%
+  summarise(mortality = mean(died))
+age_group3_counts <- age_groups %>%
+  filter(sofa_total_48hr > 11) %>%
+  pull(decile) %>%
+  table()
+age_group3$count <- as.numeric(age_group3_counts)
+
+age_group_all <- age_groups %>%
+  group_by(sofa_group, decile) %>%
+  summarise(mortality = mean(died))
+age_group_all$count <- age_groups %>%
+  group_by(sofa_group, decile) %>%
+  count() %>%
+  pull(n)
+age_group_all <- age_group_all %>%
+  mutate(se = sqrt(mortality * (1-mortality) / (count - 1)))
+
+save(age_group_all, file="age_group_all.RData")
+
+```
+
+Mortality by age group, stratified by SOFA (all data)
+This combines all SOFA groups into a single plot with 95% CI.
+``` {r age_group_all, echo=FALSE}
+
+plt1 <- ggplot(data=age_group_all,
+               aes(x=decile, y=mortality, group=sofa_group, color=sofa_group)) +
+  geom_point(size=2) +
+  geom_errorbar(aes(ymin=mortality-1.96*se, ymax=mortality+1.96*se), width=0.1) +
+  geom_line() +
+  theme_bw() +
+  theme(
+    panel.background = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    legend.position = c(0.9, 0.15),
+    legend.title = element_blank(),
+    legend.background = element_rect(size=0.5, color="black", fill="gray92"),
+    legend.key = element_rect(fill="gray92"),
+    legend.spacing.y = unit(0, "cm")
+  ) +
+  xlab("Age Groups (years)") + 
+  ylab("Mortality") +
+  scale_x_discrete(labels=c("< 40",
+                            "40-50",
+                            "50-60",
+                            "60-70",
+                            "70-80",
+                            "> 80")) +
+  scale_color_manual(values=c("darkgreen", "darkblue", "darkred"))
+
+plt1
+
+save(plt1, file="age_group_all.RData")
+
+ggsave(filename="age_group_all.png")
+
+```
+
+Heatmap of mortality by SOFA and age (all data)
+``` {r heatmap1, echo=FALSE}
+# make heatmap with observed mortality by 3 SOFA groups and 6 age groups
+# 3x6
+
+# 3 categories of sofa
+score_rainbow <- data %>%
+  ungroup() %>%
+  select(died, age_years, sofa_group) %>%
+  mutate(age_group = cut(x=age_years,
+                         breaks=c(-Inf, 40, 50, 60, 70, 80, Inf))) %>%
+  group_by(age_group, sofa_group) %>%
+  summarise(mortality=mean(died))
+
+ggplot(data=score_rainbow, mapping=aes(x=age_group, y=sofa_group)) +
+  geom_raster(aes(fill=mortality)) +
+  scale_fill_gradientn(colors=rev(c("#67001F","#B2182B","#D6604D","#F4A582","#FDDBC7","#D1E5F0","#92C5DE","#4393C3","#2166AC", "#053061")),
+                       limits=c(0,1),
+                       name="Mortality",
+                       na.value="gray20") +
+  theme_bw() +
+  theme(panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.text = element_text(size = 14, color="black"),
+        axis.title = element_text(size = 16),
+        legend.position = "right",
+        #legend.title = element_text("Mortality"),
+        legend.text = element_text(size = 8, color="black"),
+        legend.direction = "vertical",
+        legend.key.width = unit(0.5, 'cm'),
+        legend.key.height = unit(0.5, 'cm'),
+        legend.spacing.y = unit(0.5, 'cm'),
+        legend.key = element_rect(fill="gray92"),
+        legend.background = element_rect(size=0.5, color="black", fill="gray92")
+  ) +
+  xlab("Age Group (years)") +
+  ylab("48-hour Maximum SOFA Score") +
+  scale_y_discrete(labels=c("0-7", "8-11", "> 11"),
+                   expand=c(0,0)) +
+  scale_x_discrete(labels=c("< 40",
+                            "40-50",
+                            "50-60",
+                            "60-70",
+                            "70-80",
+                            "> 80"),
+                   expand=c(0,0))
+
+ggsave("heatmap_3x6.png")
+save(score_rainbow, file="heatmap_3x6.RData")
+```
+
+
+Heatmap of mortality by SOFA and age (all data)
+``` {r heatmap2, echo=FALSE}
+
+# make heatmap with observed mortality by 5 SOFA groups and 6 age groups
+# 5x6
+
+# 5 categories (based on quantiles n = 5)
+score_rainbow <- data %>%
+  ungroup() %>%
+  select(died, age_years, sofa_total_48hr) %>%
+  mutate(age_group = cut(x=age_years,
+                         breaks=c(-Inf, 40, 50, 60, 70, 80, Inf)),
+         sofa_group = cut(x=sofa_total_48hr,
+                          breaks=c(-Inf, 4, 5, 6, 8, Inf))) %>%
+  group_by(age_group, sofa_group) %>%
+  summarise(mortality=mean(died))
+
+ggplot(data=score_rainbow, mapping=aes(x=age_group, y=sofa_group)) +
+  geom_raster(aes(fill=mortality)) +
+  scale_fill_gradientn(colors=rev(c("#67001F","#B2182B","#D6604D","#F4A582","#FDDBC7","#D1E5F0","#92C5DE","#4393C3","#2166AC", "#053061")),
+                       limits=c(0,1),
+                       name="Mortality",
+                       na.value="gray20") +
+  theme_bw() +
+  theme(panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.text = element_text(size = 14, color="black"),
+        axis.title = element_text(size = 16),
+        legend.position = "right",
+        #legend.title = element_text("Mortality"),
+        legend.text = element_text(size = 8, color="black"),
+        legend.direction = "vertical",
+        legend.key.width = unit(0.5, 'cm'),
+        legend.key.height = unit(0.5, 'cm'),
+        legend.spacing.y = unit(0.5, 'cm'),
+        legend.key = element_rect(fill="gray92"),
+        legend.background = element_rect(size=0.5, color="black", fill="gray92")
+  ) +
+  xlab("Age Group (years)") +
+  ylab("48-hour Maximum SOFA Score") +
+  scale_y_discrete(labels=c("< 5", "5", "6", "7-8", "> 8"),
+                   expand=c(0,0)) +
+  scale_x_discrete(labels=c("< 40",
+                            "40-50",
+                            "50-60",
+                            "60-70",
+                            "70-80",
+                            "> 80"),
+                   expand=c(0,0))
+
+ggsave("heatmap_5x6.png")
+save(score_rainbow, file="heatmap_5x6.RData")
+```
+
+
+## Logistic Regression
+
+In this section we will make several LR models:
+
+* SOFA (continuous variable)
+* SOFA categories (NY guideline cutoffs)
+* SOFA + age (continuous variables)
+
+```{r make_cats, include=FALSE}
+# make factor of SOFA categories based off NY guidelines
+data <- data %>%
+  mutate(sofa_cat = case_when(
+    sofa_total_48hr < 8 ~ "SOFA <= 7",
+    sofa_total_48hr < 12 ~ "SOFA 8-11",
+    sofa_total_48hr >= 12 ~ "SOFA >= 12"
+  ))
+```
+
+The LR model data will be saved and sent to the "test" data institution.
+``` {r make_LRs, include=FALSE}
+
+# Change outcome to factor.
+data <- data %>%
+  mutate(died = ifelse(died==0, "No", "Yes"),
+         died = as.factor(died))
+data$died <- relevel(data$died, ref="No")
+
+# create LRs
+lr_sofa <- glm(died ~ sofa_total_48hr,
+               data=data,
+               family="binomial")
+
+lr_sofa_cat <- glm(died ~ sofa_cat,
+                   data=data,
+                   family="binomial")
+
+lr_sofa_age <- glm(died ~ sofa_total_48hr + age_years,
+                   data=data,
+                   family="binomial")
+
+save(lr_sofa, lr_sofa_cat, lr_sofa_age, file="LR_models.RData")
+
+```
+
+## Create Risk Score
+
+``` {r risk_score}
+
+# from lr_sofa_age
+
+# Example:
+# (note: these numbers are from when model was run on entire UC dataset)
+# intercept estimate: -4.56
+# sofa estimate: 0.212811 --> OR 1.23
+# age estimate: 0.041470 --> OR 1.04
+
+# sofa range 0 - 24
+# age range 18 - 100
+
+# 1 pt sofa about 5x as bad as 1 year
+# each year increase 1/5 pt
+# each sofa increase 1 pt
+
+# round to nearest whole
+
+#r = 0.2*(age-18) + SOFA
+
+# The code below will extract these numbers and automate it, but it should be similar.
+coeff_sofa <- lr_sofa_age$coefficients[2]
+coeff_age <- lr_sofa_age$coefficients[3]
+m <- round(coeff_age / coeff_sofa, digits=2) # multiplier
+
+# risk score r = m * (age - 18) + SOFA
+
+data <- data %>%
+  mutate(score = m*(age_years - 18) + sofa_total_48hr,
+         score = ifelse(age_years > 98, m*80 + sofa_total_48hr, score))
+
+roc_score_train <- roc(response=data$died,
+                  predictor=data$score,
+                  auc=TRUE)
+
+lr_score <- glm(died ~ score,
+                data=data,
+                family="binomial")
+
+data$pred_score <- predict(lr_score, data)
+data <- data %>%
+  mutate(prob_score = exp(pred_score)/(1+exp(pred_score)))
+
+#training AUC
+roc_score_train$auc
+
+# save model
+save(lr_score, roc_score_train, m, file="risk_score.RData")
+```
+
+``` {r make_preds, echo=FALSE}
+# make predictions for calibration plot creation
+data$pred_sofa <- predict(lr_sofa, data)
+data <- data %>%
+  mutate(prob_sofa = exp(pred_sofa)/(1+exp(pred_sofa)))
+```
+
+``` {r cal_byage_plot, echo=FALSE}
+
+# Make plot of observed mortality and predicted mortality for age groups.
+
+# change died back to 0/1
+data$died <- ifelse(data$died == "Yes", 1, 0)
+
+age_groups <- data %>%
+  ungroup() %>%
+  select(age_years, died, prob_sofa, prob_score) %>%
+  mutate(age_group = cut(x=age_years,
+                      breaks=c(-Inf, 40, 50, 60, 70, 80, Inf))) %>%
+  select(-age_years)
+
+age_groups_sum <- age_groups %>%
+  group_by(age_group) %>%
+  summarise(mortality = mean(died)) %>%
+  mutate(group = "Observed Mortality")
+
+age_groups_sum <- age_groups %>%
+  group_by(age_group) %>%
+  summarise(mortality = mean(prob_score)) %>%
+  mutate(group = "Predicted Mortality by APSI Score") %>%
+  rbind(age_groups_sum)
+
+age_groups_sum <- age_groups %>%
+  group_by(age_group) %>%
+  summarise(mortality = mean(prob_sofa)) %>%
+  mutate(group = "Predicted Mortality by SOFA Score") %>%
+  rbind(age_groups_sum)
+
+ggplot(data=age_groups_sum, aes(x=age_group,
+                                y=mortality,
+                                fill=group)) +
+  geom_col(position="dodge",
+           color="black") +
+  scale_fill_manual(values=c("gray30", "dodgerblue", "indianred")) +
+  xlab("Age Group (years)") +
+  ylab("Life-support Episode Mortality (%)") +
+  theme_bw() +
+  theme(panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.text = element_text(size = 14, color="black"),
+        axis.title = element_text(size = 16),
+        legend.position = c(0.25,0.8),
+        legend.title = element_blank(),
+        legend.text = element_text(size = 8, color="black"),
+        legend.direction = "vertical",
+        legend.key.width = unit(0.5, 'cm'),
+        legend.key.height = unit(0.5, 'cm'),
+        legend.spacing.y = unit(0, 'cm'),
+        legend.key = element_rect(fill="gray92"),
+        legend.background = element_rect(size=0.5, color="black", fill="gray92")
+  ) +
+  scale_x_discrete(labels=c("< 40",
+                            "40-50",
+                            "50-60",
+                            "60-70",
+                            "70-80",
+                            "> 80")) +
+  scale_y_continuous(breaks=seq(0.1, 0.9, 0.1),
+                     labels=c("10", "20", "30", "40", "50", "60", "70", "80", "90"),
+                     limits=c(0, 0.7))# +
+  #geom_text(data=score_data_tiled_gg, aes(label=mortality))
+
+ggsave(filename="Calibration_bar_byage_UCNW.png")
+save(age_groups, file="age_groups_predictions_UCNW.RData")
+
+```
+
+``` {r cal_byscore_plot, echo=FALSE}
+
+# Make plot of observed mortality and predicted mortality by deciles of each score (SOFA or APSI).
+
+score_data <- data %>%
+  ungroup() %>%
+  select(sofa_total_48hr, score, prob_sofa, prob_score, died) %>%
+  mutate(sofa_deciles = ntile(sofa_total_48hr, 10),
+         score_deciles = ntile(score, 10))
+
+score_data_tiled <- score_data %>%
+  group_by(sofa_deciles) %>%
+  summarise(obs_sofa_mortality = mean(died)) %>%
+  rename(deciles = sofa_deciles)
+
+score_data_tiled <- score_data %>%
+  group_by(score_deciles) %>%
+  summarise(obs_score_mortality = mean(died)) %>%
+  rename(deciles = score_deciles) %>%
+  full_join(score_data_tiled, by="deciles")
+
+score_data_tiled <- score_data %>%
+  group_by(score_deciles) %>%
+  summarise(pred_score_mortality = mean(prob_score)) %>%
+  rename(deciles = score_deciles) %>%
+  full_join(score_data_tiled, by="deciles")
+
+score_data_tiled <- score_data %>%
+  group_by(score_deciles) %>%
+  summarise(pred_sofa_mortality = mean(prob_sofa)) %>%
+  rename(deciles = score_deciles) %>%
+  full_join(score_data_tiled, by="deciles")
+
+score_data_tiled <- score_data %>%
+  group_by(sofa_deciles) %>%
+  summarise(pred_sofa_mortality_by_sofa_deciles = mean(prob_sofa)) %>%
+  rename(deciles = sofa_deciles) %>%
+  full_join(score_data_tiled, by="deciles")
+
+score_data_tiled_gg <- score_data_tiled %>%
+  select(deciles, obs_score_mortality) %>%
+  mutate(group = "Observed Mortality") %>%
+  rename(mortality = obs_score_mortality)
+
+score_data_tiled_gg <- score_data_tiled %>%
+  select(deciles, pred_score_mortality) %>%
+  mutate(group = "Predicted Mortality by APSI Score") %>%
+  rename(mortality = pred_score_mortality) %>%
+  rbind(score_data_tiled_gg)
+
+score_data_tiled_gg <- score_data_tiled %>%
+  select(deciles, pred_sofa_mortality) %>%
+  mutate(group = "Predicted Mortality by SOFA Score") %>%
+  rename(mortality = pred_sofa_mortality) %>%
+  rbind(score_data_tiled_gg)
+
+ggplot(data=score_data_tiled_gg, aes(x=deciles,
+                                     y=mortality,
+                                     fill=group)) +
+  geom_col(position="dodge",
+           color="black") +
+  scale_fill_manual(values=c("gray30", "dodgerblue", "indianred")) +
+  xlab("Deciles of Risk or SOFA Score") +
+  ylab("Life-support Episode Mortality (%)") +
+  theme_bw() +
+  theme(panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.text = element_text(size = 14, color="black"),
+        axis.title = element_text(size = 16),
+        legend.position = c(0.25,0.8),
+        legend.title = element_blank(),
+        legend.text = element_text(size = 8, color="black"),
+        legend.direction = "vertical",
+        legend.key.width = unit(0.5, 'cm'),
+        legend.key.height = unit(0.5, 'cm'),
+        legend.spacing.y = unit(0, 'cm'),
+        legend.key = element_rect(fill="gray92"),
+        legend.background = element_rect(size=0.5, color="black", fill="gray92")
+  ) +
+  scale_x_continuous(breaks=c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10),
+                   labels=c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10")) +
+  scale_y_continuous(breaks=seq(0.1, 0.9, 0.1),
+                     labels=c("10", "20", "30", "40", "50", "60", "70", "80", "90"))# +
+  #geom_text(data=score_data_tiled_gg, aes(label=mortality))
+
+ggsave(filename="Calibration_bar_byscore_UCNW.png")
+save(score_data_tiled, file="score_data_tiled_UCNW.RData")
+  
+```
+
+``` {r mortality_by_race}
+
+mort_race <- data %>%
+  group_by(race) %>%
+  summarise(mortality = mean(prob_sofa)) %>%
+  as.data.frame() %>%
+  mutate(group = "Predicted Mortality by SOFA Score")
+
+mort_race <- data %>%
+  group_by(race) %>%
+  summarise(mortality = mean(prob_score)) %>%
+  as.data.frame() %>%
+  mutate(group = "Predicted Mortality by APSI Score") %>%
+  rbind(mort_race)
+
+mort_race <- data %>%
+  group_by(race) %>%
+  summarise(mortality = mean(died)) %>%
+  as.data.frame() %>%
+  mutate(group = "Observed Mortality") %>%
+  rbind(mort_race)
+
+mort_race$race <- factor(mort_race$race, levels=c("Non-Hispanic White", "Non-Hispanic Black", "Hispanic", "Other"))
+
+ggplot(data=mort_race, aes(x=race,
+                           y=mortality,
+                           fill=group)) +
+  geom_col(position="dodge",
+           color="black") +
+  scale_fill_manual(values=c("gray30", "dodgerblue", "indianred")) +
+  xlab("Race/Ethnicity") +
+  ylab("Life-support Episode Mortality (%)") +
+  theme_bw() +
+  theme(panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.text = element_text(size = 14, color="black"),
+        axis.title = element_text(size = 16),
+        legend.position = c(0.3,0.85),
+        legend.title = element_blank(),
+        legend.text = element_text(size = 8, color="black"),
+        legend.direction = "vertical",
+        legend.key.width = unit(0.5, 'cm'),
+        legend.key.height = unit(0.5, 'cm'),
+        legend.spacing.y = unit(0, 'cm'),
+        legend.key = element_rect(fill="gray92"),
+        legend.background = element_rect(size=0.5, color="black", fill="gray92")
+  ) +
+  scale_x_discrete(labels=c("Non-Hispanic\nWhite",
+                            "Non-Hispanic\nBlack",
+                            "Hispanic",
+                            "Other")) +
+  scale_y_continuous(breaks=seq(0, .4, 0.1),
+                     labels=c("0", "10", "20", "30", "40"),
+                     limits=c(0, 0.4))# +
+  #geom_text(data=score_data_tiled_gg, aes(label=mortality))
+
+ggsave(filename="Calibration_bar_byrace_UCNW.png")
+
+save(mort_race, file="Mortality_by_race_UCNW.RData")
+```
+
+``` {r statistics_race}
+data %>% distinct(patient, .keep_all=TRUE) %>%
+  group_by(race) %>%
+  summarise(median_age = median(age_years),
+            iqr_age = IQR(age_years),
+            mean_age = mean(age_years),
+            sd_age = sd(age_years))
+```
+
+``` {r statistics_race_sofa}
+data %>% group_by(race) %>%
+  summarise(sofa = median(sofa_total_48hr),
+            iqr_sofa = IQR(sofa_total_48hr))
+```
