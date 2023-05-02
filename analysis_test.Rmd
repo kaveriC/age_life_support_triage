@@ -15,6 +15,7 @@ This script will be used to make figures/results for the age/CSC project. It sho
 Variables should be:
 
 * encounter
+* patient_id
 * lfspprt_episode
 * sofa_total_48hr
 * age_years
@@ -49,58 +50,43 @@ library(ResourceSelection)
 # Set your path to load R files here
 setwd("C:/Users/t.cri.mhermsen/Documents/UCMC_data_clean/results_combined/UCNW")
 
-# Load files
+# Load files from training data
 load("LR_Models.RData")
 load("risk_score.RData")
 
-# set path to your WashU data here, if different
+# set path to your test data here, if different
 setwd("C:/Users/t.cri.mhermsen/Documents/UCMC_data_clean/WashU")
 
-# now load WashU data, save as "data"
+# now load test data, save as "data"
 data <- read.csv("bjc_deidentified_fixed_2023-02-22.csv")
 
-# for practical coding purposes, i will load our data just to be able to write the script
-#data <- read.csv("data_for_analysis.csv")
-# select random subset so it's a bit different
-#data <- slice_sample(data, n=800, replace=TRUE)
-# delete or comment out these lines when running at WashU... ^^
-
 ```
+
 ## Cleaning
 ``` {r clean, echo=FALSE}
 
-# getting some errors in the "age group" chunks because some patients have NA values for age
-# I will remove these observations
-
+# Some patients have no value for age. These observations will be removed.
 data <- data %>%
   filter(is.na(age_years)==FALSE)
-# should remove only 80 obs 18352 --> 18272
+# In our data, 7 patients (80 obs) removed.
 
-# also many with no race...
-# probably supposed to be "other", since there are 0 "others"
-# will change to "other"
-# change to factor
+# Race-ethnicity variables needs to be re-coded. One of the levels is blank but should be "Other".
 data$race <- factor(data$race)
 levels(data$race) <- list("Other" = "",
                           "Hispanic" = "Hispanic",
                           "Non-Hispanic Black" = "Non-Hispanic Black",
                           "Non-Hispanic White" = "Non-Hispanic White")
 
-# we will also fix an error in the "died" variable
-# for a small number of patients, (28), they died twice (usually in separate encounters).
-# we will set died == 0 for the first encounter.
+# A small number of patients (28) died exactly twice (usually in separate encounters). We will set died == 0 for there first encounter.
 data <- data %>%
   group_by(patient) %>%
   mutate(died = ifelse(encounter != max(encounter), 0, died))
 
-
-
 ```
 
 ## Table 1
-
 ``` {r tab1_sofagroups, echo=FALSE}
-# create SOFA groups and LSE length variable for table 1s
+# Create SOFA groups variable for table one
 data <- data %>%
   group_by(encounter, lfspprt_episode) %>%
   mutate(sofa_group = cut(sofa_total_48hr, breaks=c(-Inf, 7, 11, Inf),
@@ -108,18 +94,13 @@ data <- data %>%
                                     "SOFA 8-11",
                                     "SOFA > 11")),
          sofa_cat = sofa_group)
-         #lse_greater_7d = ifelse(lfspprt_ep_length >= 168, 1, 0))
 
 ```
 
-Patient Level Table 1 (WashU data)
+This script will create several "Table 1s". Each is calculated using a different unit of analysis (by patient, by encounter, or by LSE) so interpret accordingly.
 
-Eval = FALSE since WU data currently doesn't have "patient" variable -- will update.
-
+Patient Level Table 1 (Test data)
 ```{r table1_WU_pt, echo=FALSE}
-# as decriptive statistics, table 1 will be run on the WashU data
-# we already have table 1 for UC and NW data (together and separate)
-
 
 tbl1_WU_pt <- data %>%
   ungroup %>%
@@ -151,7 +132,7 @@ gt::gtsave(as_gt(tbl1_WU_pt), filename = "table1_WU_pt.png")
 
 ```
 
-Encounter Level Table 1 (WashU data)
+Encounter Level Table 1 (Test data)
 ```{r table1_WU_enc, echo=FALSE}
 
 tbl1_WU_enc <- data %>%
@@ -188,9 +169,10 @@ gt::gtsave(as_gt(tbl1_WU_enc), filename = "table1_WU_enc.png")
 LSE Level Table 1 (WashU data)
 ```{r table1_WU_lse, echo=FALSE}
 
+# Note: no filtering is required for this table as the data is already 1 row per LSE.
+
 tbl1_WU_lse <- data %>%
   ungroup %>%
-  #arrange(patient, encounter, lfspprt_episode) %>% # nothing to do, already each row is LSE
   arrange(encounter, lfspprt_episode) %>%
   select(age_years,
          sex,
@@ -219,15 +201,6 @@ gt::gtsave(as_gt(tbl1_WU_lse), filename = "table1_WU_lse.png")
 ```
 
 ``` {r age_groups, echo=FALSE, include=FALSE}
-
-# x axis is deciles of age
-# y axis is % mortality in each decile
-
-# however, we will stratify by SOFA score using the following strata
-# SOFA <= 7
-# SOFA 8-11
-# SOFA >= 12
-# (same as NY guidelines)
 
 age_groups <- data %>%
   ungroup() %>%
@@ -284,7 +257,7 @@ Mortality by age group, stratified by SOFA
 This combines all SOFA groups into a single plot with 95% CI.
 ``` {r age_group_all, echo=FALSE}
 
-plt4 <- ggplot(data=age_group_all,
+plt1 <- ggplot(data=age_group_all,
                aes(x=decile, y=mortality, group=sofa_group, color=sofa_group)) +
   geom_point(size=2) +
   geom_errorbar(aes(ymin=mortality-1.96*se, ymax=mortality+1.96*se), width=0.1) +
@@ -310,22 +283,17 @@ plt4 <- ggplot(data=age_group_all,
                             "> 80")) +
   scale_color_manual(values=c("darkgreen", "darkblue", "darkred"))
 
-plt4
+plt1
 
 ggsave(filename="age_group_all_WU.png")
 
 ```
 
-Heatmap of mortality by SOFA and age
+Heatmap of mortality by SOFA and age: 3x6
 ``` {r heatmap1, echo=FALSE}
-# this can be run on combined data UC + NW
-# we will also make separate heatmaps for UC vs NW
 
-# that scaled rainbow plot from MELDNa paper
-
-# make score_rainbow with observed mortality by groups
-
-# 3 categories of sofa
+# Make heatmap with 3 categories of SOFA score and 6 age groups
+# 3x6
 score_rainbow <- data %>%
   ungroup() %>%
   select(died, age_years, sofa_group) %>%
@@ -373,10 +341,11 @@ save(score_rainbow, file="heatmap_3x6_WU.RData")
 ```
 
 
-Heatmap of mortality by SOFA and age (all data)
-``` {r heatmap3, echo=FALSE}
+Heatmap of mortality by SOFA and age: 5x6
+``` {r heatmap2, echo=FALSE}
 
-# first on all data
+# Make heatmap with 5 categories of SOFA score and 6 age groups
+# 5x6
 
 # 5 categories (based on quantiles n = 5)
 score_rainbow <- data %>%
@@ -432,7 +401,7 @@ save(score_rainbow, file="heatmap_5x6_WU.RData")
 
 Make categories for SOFA score
 ```{r make_cats, include=FALSE}
-# make factor of SOFA categories based off NY guidelines
+# Make factor of SOFA categories based off NY guidelines
 data <- data %>%
   mutate(sofa_cat = case_when(
     sofa_total_48hr < 8 ~ "SOFA <= 7",
@@ -444,9 +413,9 @@ data <- data %>%
 
 ``` {r make_preds, include=FALSE}
 
-# since we are recalibrating to the testing data, we actually need to re-run all the LR models.
+# Since we are recalibrating to the test data, we actually need to re-run all the LR models.
 
-# make predictions with recalibrated LR models
+# Make predictions with recalibrated LR models
 lr_sofa_recal <- glm(died ~ sofa_total_48hr,
                      data=data,
                      family="binomial")
@@ -465,18 +434,6 @@ data <- data %>%
   mutate(prob_sofa_recal = exp(pred_sofa_recal)/(1+exp(pred_sofa_recal)),
          prob_sofacat_recal = exp(pred_sofacat_recal)/(1+exp(pred_sofacat_recal)),
          prob_sofaage_recal = exp(pred_sofaage_recal)/(1+exp(pred_sofaage_recal)))
-
-
-
-#plt5 <- ggplot(data=data, aes(x=age_years, y=logodds_sofasplage)) +
-#  geom_point() +
-#  geom_abline(slope=-0.01639, intercept=-2.48500+1.06805) +
-#  geom_abline(slope=0.04904, intercept=-4.03415)
-  
-
-#plt5
-
-#ggsave(filename="spline.png")
 
 ```
 
@@ -508,7 +465,7 @@ save(roc.list, file="ROCs.RData")
 ```
 
 ``` {r test_rocs, message=TRUE, echo=FALSE}
-# use recalibrated but it shouldn't matter.
+
 # sofa only vs sofa cat
 roc.test(roc_sofa_recal, roc_sofa_cat_recal,
          method="delong",
@@ -532,226 +489,6 @@ roc.test(roc_sofa_cat_recal, roc_sofa_age_recal,
 
 ```
 
-## Make plots
-
-First, we'll make a plot with all the ROC curves on one.
-``` {r plot_LR, echo=FALSE, eval=FALSE}
-# use recalibrated models
-fig1 <- ggroc(roc.list,
-      size = 1.065) +
-  theme_bw() +
-  labs(x = "Specificity",
-       y = "Sensitivity") + 
-  theme(panel.background = element_blank(),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        axis.text = element_text(size = 14, color="black"),
-        axis.title = element_text(size = 16),
-        legend.position = c(0.75,0.3),
-        legend.title = element_blank(),
-        legend.text = element_text(size = 8, color="black"),
-        legend.direction = "vertical",
-        legend.key.width = unit(0.5, 'cm'),
-        legend.key.height = unit(0.5, 'cm'),
-        legend.key = element_rect(fill="gray92"),
-        legend.background = element_rect(size=0.5, color="black", fill="gray92"),
-        aspect.ratio = 1
-  ) + 
-  scale_color_brewer(palette="Set1") +
-  scale_color_manual(values=c("darkgreen", "darkblue", "darkred", "lightsalmon")) +
-  geom_abline(slope = 1, intercept = 1, color = "gray")
-
-levels(fig1$data$name) <- c(paste("48-hour max SOFA,\nAUC = ",
-                                  round(roc_sofa$auc, 3),
-                                  "\n"),
-                            paste("48-hour max SOFA\nby NY categories,\nAUC = ",
-                                  round(roc_sofa_cat$auc, 3),
-                                  "\n"),
-                            paste("48-hour max SOFA\nand Age,\nAUC = ",
-                                  round(roc_sofa_age$auc, 3),
-                                  "\n"),
-                            paste("48-hour max SOFA and\nlinear spline of Age,\nAUC = ",
-                                  round(roc_sofa_splage$auc, 3),
-                                  "\n"))
-
-plot(fig1)
-
-ggsave(filename="ROC_all.png")
-```
-
-``` {r plot_LR_3, echo=FALSE}
-
-# we will make the same plot without splage.
-# use recalibrated models
-
-# make 95% ci
-ci.list <- lapply(roc.list, ci.se)
-dat.ci.list <- lapply(ci.list, function(ciobj)
-  data.frame(x = as.numeric(rownames(ciobj)),
-             lower = ciobj[, 1],
-             upper = ciobj[, 3]))
-
-dat.ci.list
-
-# method from:
-# https://stackoverflow.com/questions/64692484/how-to-draw-multiple-roc-curves-with-confidence-interval-in-proc
-
-fig1a <- ggroc(roc.list,
-      size = 1.065) +
-  theme_bw() +
-  labs(x = "Specificity",
-       y = "Sensitivity") + 
-  theme(panel.background = element_blank(),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        axis.text = element_text(size = 14, color="black"),
-        axis.title = element_text(size = 16),
-        legend.position = c(0.75,0.28),
-        legend.title = element_blank(),
-        legend.text = element_text(size = 10, color="black"),
-        legend.direction = "vertical",
-        legend.key.width = unit(0.5, 'cm'),
-        legend.key.height = unit(1, 'cm'),
-        legend.key = element_rect(fill="gray92"),
-        legend.background = element_rect(size=0.5, color="black", fill="gray92"),
-        aspect.ratio = 1
-  ) + 
-  scale_color_brewer(palette="Set1") +
-  scale_color_manual(values=c("darkgreen", "darkblue", "darkred")) +
-  geom_abline(slope = 1, intercept = 1, color = "gray") +
-  geom_ribbon(data = dat.ci.list[[1]],
-              aes(x=x, ymin=lower, ymax=upper),
-              alpha=0.3,
-              fill = "darkgreen",
-              inherit.aes=FALSE) +
-  geom_ribbon(data = dat.ci.list[[2]],
-              aes(x=x, ymin=lower, ymax=upper),
-              alpha=0.3,
-              fill = "darkblue",
-              inherit.aes=FALSE) +
-  geom_ribbon(data = dat.ci.list[[3]],
-              aes(x=x, ymin=lower, ymax=upper),
-              alpha=0.3,
-              fill = "darkred",
-              inherit.aes=FALSE)
-
-levels(fig1a$data$name) <- c(paste("48-hour max SOFA,\nAUC = ",
-                                  round(roc_sofa_recal$auc, 3),
-                                  "\n"),
-                            paste("48-hour max SOFA\nby NY categories,\nAUC = ",
-                                  round(roc_sofa_cat_recal$auc, 3),
-                                  "\n"),
-                            paste("48-hour max SOFA\nand Age,\nAUC = ",
-                                  round(roc_sofa_age_recal$auc, 3),
-                                  "\n"))
-
-
-plot(fig1a)
-
-ggsave(filename="ROC_all.png")
-```
-
-``` {r plot_sofa, echo=FALSE}
-fig2 <- ggroc(roc_sofa_recal,
-      size = 1.065) +
-  theme_bw() +
-  labs(x = "Specificity",
-       y = "Sensitivity") + 
-  theme(panel.background = element_blank(),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        axis.text = element_text(size = 14, color="black"),
-        axis.title = element_text(size = 16),
-        aspect.ratio = 1
-  ) + 
-  geom_abline(slope = 1, intercept = 1, color = "gray") +
-  #geom_rect(aes(xmin=0, xmax=0.5, ymin=0.0625, ymax=0.1875),
-  #          color="black",
-  #          fill="gray92") +
-  geom_text(aes(x=0.25, y=0.125),
-            label=paste("AUC = ", round(roc_sofa_recal$auc, 3)),
-            size=5)
-
-
-plot(fig2)
-
-ggsave(filename="ROC_sofa.png")
-```
-
-``` {r plot_sofa_cat, echo=FALSE}
-fig3 <- ggroc(roc_sofa_cat_recal,
-      size = 1.065) +
-  theme_bw() +
-  labs(x = "Specificity",
-       y = "Sensitivity") + 
-  theme(panel.background = element_blank(),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        axis.text = element_text(size = 14, color="black"),
-        axis.title = element_text(size = 16),
-        aspect.ratio = 1) +
-  geom_abline(slope = 1, intercept = 1, color = "gray") +
-  #geom_rect(aes(xmin=0, xmax=0.5, ymin=0.0625, ymax=0.1875),
-  #          color="black",
-  #          fill="gray92")+
-  geom_text(aes(x=0.25, y=0.125),
-            label=paste("AUC = ", round(roc_sofa_cat_recal$auc, 3)),
-            size=5)
-
-plot(fig3)
-
-ggsave(filename="ROC_sofa_cat.png")
-```
-
-``` {r plot_sofa_age, echo=FALSE}
-fig4 <- ggroc(roc_sofa_age_recal,
-      size = 1.065) +
-  theme_bw() +
-  labs(x = "Specificity",
-       y = "Sensitivity") + 
-  theme(panel.background = element_blank(),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        axis.text = element_text(size = 14, color="black"),
-        axis.title = element_text(size = 16),
-        aspect.ratio = 1) +
-  geom_abline(slope = 1, intercept = 1, color = "gray") +
-  #geom_rect(aes(xmin=0, xmax=0.5, ymin=0.0625, ymax=0.1875),
-  #          color="black",
-  #          fill="gray92")+
-  geom_text(aes(x=0.25, y=0.125),
-            label=paste("AUC = ", round(roc_sofa_age_recal$auc, 3)),
-            size=5)
-
-plot(fig4)
-
-ggsave(filename="ROC_sofa_age.png")
-```
-
-``` {r plot_sofa_splage, echo=FALSE, eval=FALSE}
-fig5 <- ggroc(roc_sofa_splage,
-      size = 1.065) +
-  theme_bw() +
-  labs(x = "Specificity",
-       y = "Sensitivity") + 
-  theme(panel.background = element_blank(),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        axis.text = element_text(size = 14, color="black"),
-        axis.title = element_text(size = 16),
-        aspect.ratio = 1) +
-  geom_abline(slope = 1, intercept = 1, color = "gray") +
-  #geom_rect(aes(xmin=0, xmax=0.5, ymin=0.0625, ymax=0.1875),
-  #          color="black",
-  #          fill="gray92")+
-  geom_text(aes(x=0.25, y=0.125),
-            label=paste("AUC = ", round(roc_sofa_splage$auc, 3)),
-            size=5)
-
-plot(fig5)
-
-ggsave(filename="ROC_sofa_splage.png")
-```
 
 ## Calibration Curves
 
@@ -784,22 +521,9 @@ dev.off()
 val.prob.ci.2(p=data$prob_sofaage_recal, y=data$died)
 ```
 
-Calibration for SOFA + linear spline of age model
-``` {r cal_sofa_splage, echo=FALSE, warning=FALSE, eval=FALSE}
-png(file="cal_sofa_splage_ci.png")
-val.prob.ci.2(p=data$prob_sofasplage_recal, y=data$died)
-
-val.prob.ci.2(p=data$prob_sofasplage_recal, y=data$died)
-dev.off()
-```
-
-
 ``` {r risk_score}
 
-# we have already loaded the LR model "lr_score", as well as the "m" value used to make it.
-# we really only need the "m" value.
-
-
+# We have already loaded the LR model "lr_score", as well as the "m" value used to make it. We really only need the "m" value.
 
 data <- data %>%
   mutate(score = m*(age_years - 18) + sofa_total_48hr,
@@ -809,10 +533,10 @@ roc_score <- roc(response=data$died,
                   predictor=data$score,
                   auc=TRUE)
 
-# rename the lr_score model loaded from UC and NW data
+# Rename the old lr_score model loaded from training data
 lr_score_train <- lr_score
 
-# save new lr_score
+# Save new lr_score
 lr_score <- glm(died ~ score,
                 data=data,
                 family="binomial")
@@ -835,64 +559,47 @@ roc_score_recal <- roc(response=data$died,
                        ci=TRUE)
 roc_score_recal$auc
 
-# they are the same, which makes sense. Recalibration would not affect the rank ordering.
+# They are the same, which makes sense. Recalibration would not affect the rank ordering.
 ```
 
-``` {r risk_score_roc}
-# make ci
-ciobj <- ci.se(roc_score_recal)
-dat.ci <- data.frame(x = as.numeric(rownames(ciobj)),
-                     lower = ciobj[, 1],
-                     upper = ciobj[, 3])
+``` {r test_rocs_APSI, message=TRUE, echo=FALSE}
+# compare APSI to other scores
 
-fig6 <- ggroc(roc_score_recal,
-      size = 1.065) +
-  theme_bw() +
-  labs(x = "Specificity",
-       y = "Sensitivity") + 
-  theme(panel.background = element_blank(),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        axis.text = element_text(size = 14, color="black"),
-        axis.title = element_text(size = 16),
-        aspect.ratio = 1) +
-  geom_abline(slope = 1, intercept = 1, color = "gray") +
-  #geom_rect(aes(xmin=0, xmax=0.5, ymin=0.0625, ymax=0.1875),
-  #          color="black",
-  #          fill="gray92")+
-  geom_text(aes(x=0.25, y=0.125),
-            label=paste("AUC = ", round(roc_score$auc, 3)),
-            size=5) +
-  geom_ribbon(data=dat.ci, aes(x=x, ymin=lower, ymax=upper), alpha=0.3)
+# sofa only vs APSI
+roc.test(roc_sofa_recal, roc_score_recal,
+         method="delong",
+         paired=TRUE,
+         alternative = "two.sided",
+         conf.level=0.95)
 
-plot(fig6)
+# sofa cat vs APSI
+roc.test(roc_sofa_cat_recal, roc_score_recal,
+         method="delong",
+         paired=TRUE,
+         alternative = "two.sided",
+         conf.level=0.95)
 
-ggsave(filename="ROC_sofa_score.png")
-
-``` 
+```
 
 ``` {r plot_LR_3_APSI, echo=FALSE}
 
-# sofa, sofa cat, APSI
 # use recalibrated models
 
-roc.list2 <- list(roc_sofa_recal,
+roc.list <- list(roc_sofa_recal,
                  roc_sofa_cat_recal,
                  roc_score_recal)
 
 # make 95% ci
-ci.list <- lapply(roc.list2, ci.se)
+ci.list <- lapply(roc.list, ci.se)
 dat.ci.list <- lapply(ci.list, function(ciobj)
   data.frame(x = as.numeric(rownames(ciobj)),
              lower = ciobj[, 1],
              upper = ciobj[, 3]))
 
-dat.ci.list
-
 # method from:
 # https://stackoverflow.com/questions/64692484/how-to-draw-multiple-roc-curves-with-confidence-interval-in-proc
 
-fig1a <- ggroc(roc.list2,
+plt2 <- ggroc(roc.list,
       size = 1.065) +
   theme_bw() +
   labs(x = "Specificity",
@@ -931,7 +638,7 @@ fig1a <- ggroc(roc.list2,
               fill = "darkred",
               inherit.aes=FALSE)
 
-levels(fig1a$data$name) <- c(paste("48-hour max SOFA,\nAUC = ",
+levels(plt2$data$name) <- c(paste("48-hour max SOFA,\nAUC = ",
                                   round(roc_sofa_recal$auc, 3),
                                   "\n"),
                             paste("48-hour max SOFA\nby NY categories,\nAUC = ",
@@ -942,7 +649,7 @@ levels(fig1a$data$name) <- c(paste("48-hour max SOFA,\nAUC = ",
                                   "\n"))
 
 
-plot(fig1a)
+plot(plt2)
 
 ggsave(filename="ROC_all_APSI.png")
 ```
@@ -964,128 +671,9 @@ confint(lr_score_recal)
 summary(lr_score_recal)
 ```
 
-``` {r risk_score_hist}
-
-ggplot(data=data) +
-  geom_histogram(data=data, aes(score), color="black", fill="gray") +
-  theme_bw() +
-  labs(x = "Risk Score",
-       y = "Count") + 
-  theme(panel.background = element_blank(),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        axis.text = element_text(size = 14, color="black"),
-        axis.title = element_text(size = 16)) +
-  scale_x_continuous(limits=c(0,40))
-
-ggsave(filename="risk_score_hist_WU.png")
-
-```
-
-``` {r cal_byscore_plot, echo=FALSE, eval=FALSE}
-
-# new dataframe of deciles of score
-# deciles of SOFA
-# observed % probability survival for each score
-# LR outcome (pred prob survival)
-# LR outcome for SOFA
-
-# not recalibrated
-
-score_data <- data %>%
-  ungroup() %>%
-  select(sofa_total_48hr, score, prob_sofa, prob_sofaage, prob_score, died) %>%
-  mutate(sofa_deciles = ntile(sofa_total_48hr, 10),
-         score_deciles = ntile(score, 10))
-
-score_data_tiled <- score_data %>%
-  group_by(sofa_deciles) %>%
-  summarise(obs_sofa_mortality = mean(died)) %>%
-  rename(deciles = sofa_deciles)
-
-score_data_tiled <- score_data %>%
-  group_by(score_deciles) %>%
-  summarise(obs_score_mortality = mean(died)) %>%
-  rename(deciles = score_deciles) %>%
-  full_join(score_data_tiled, by="deciles")
-
-score_data_tiled <- score_data %>%
-  group_by(score_deciles) %>%
-  summarise(pred_score_mortality = mean(prob_score)) %>%
-  rename(deciles = score_deciles) %>%
-  full_join(score_data_tiled, by="deciles")
-
-score_data_tiled <- score_data %>%
-  group_by(score_deciles) %>%
-  summarise(pred_sofa_mortality = mean(prob_sofa)) %>%
-  rename(deciles = score_deciles) %>%
-  full_join(score_data_tiled, by="deciles")
-
-score_data_tiled <- score_data %>%
-  group_by(sofa_deciles) %>%
-  summarise(pred_sofa_mortality_by_sofa_deciles = mean(prob_sofa)) %>%
-  rename(deciles = sofa_deciles) %>%
-  full_join(score_data_tiled, by="deciles")
-
-score_data_tiled_gg <- score_data_tiled %>%
-  select(deciles, obs_score_mortality) %>%
-  mutate(group = "Observed Mortality") %>%
-  rename(mortality = obs_score_mortality)
-
-score_data_tiled_gg <- score_data_tiled %>%
-  select(deciles, pred_score_mortality) %>%
-  mutate(group = "Predicted Mortality by Risk Score") %>%
-  rename(mortality = pred_score_mortality) %>%
-  rbind(score_data_tiled_gg)
-
-score_data_tiled_gg <- score_data_tiled %>%
-  select(deciles, pred_sofa_mortality) %>%
-  mutate(group = "Predicted Mortality by SOFA Score") %>%
-  rename(mortality = pred_sofa_mortality) %>%
-  rbind(score_data_tiled_gg)
-
-ggplot(data=score_data_tiled_gg, aes(x=deciles,
-                                     y=mortality,
-                                     fill=group)) +
-  geom_col(position="dodge",
-           color="black") +
-  scale_fill_manual(values=c("gray30", "dodgerblue", "indianred")) +
-  xlab("Deciles of Risk Score (Not Recalibrated)") +
-  ylab("Life-support Episode Mortality (%)") +
-  theme_bw() +
-  theme(panel.background = element_blank(),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        axis.text = element_text(size = 14, color="black"),
-        axis.title = element_text(size = 16),
-        legend.position = c(0.25,0.8),
-        legend.title = element_blank(),
-        legend.text = element_text(size = 8, color="black"),
-        legend.direction = "vertical",
-        legend.key.width = unit(0.5, 'cm'),
-        legend.key.height = unit(0.5, 'cm'),
-        legend.spacing.y = unit(0, 'cm'),
-        legend.key = element_rect(fill="gray92"),
-        legend.background = element_rect(size=0.5, color="black", fill="gray92")
-  ) +
-  scale_x_continuous(breaks=c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10),
-                   labels=c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10")) +
-  scale_y_continuous(breaks=seq(0.1, 0.9, 0.1),
-                     labels=c("10", "20", "30", "40", "50", "60", "70", "80", "90"))# +
-  #geom_text(data=score_data_tiled_gg, aes(label=mortality))
-
-ggsave(filename="Calibration_bar_byscore.png")
-save(score_data_tiled, file="score_data_tiled.RData")
-  
-```
-
 ``` {r cal_byscore_recal_plot, echo=FALSE}
 
-# new dataframe of deciles of score
-# deciles of SOFA
-# observed % probability survival for each score
-# LR outcome (pred prob survival)
-# LR outcome for SOFA
+# Make plot of observed mortality and predicted mortality by deciles of each score (SOFA and APSI)
 
 # recalibrated
 
@@ -1179,87 +767,8 @@ save(score_data_tiled, file="score_data_tiled.RData")
   
 ```
 
-``` {r cal_byage_plot, echo=FALSE, eval=FALSE}
-# same but with age on x axis
-
-# age groups
-# observed mortality by age group
-# pred mortality by score age group
-# pred mortality by sofa age group
-
-# not recalibrated 
-
-age_groups <- data %>%
-  ungroup() %>%
-  select(age_years, died, prob_sofa, prob_score) %>%
-  mutate(age_group = cut(x=age_years,
-                      breaks=c(-Inf, 40, 50, 60, 70, 80, Inf))) %>%
-  select(-age_years)
-
-age_groups_sum <- age_groups %>%
-  group_by(age_group) %>%
-  summarise(mortality = mean(died)) %>%
-  mutate(group = "Observed Mortality")
-
-age_groups_sum <- age_groups %>%
-  group_by(age_group) %>%
-  summarise(mortality = mean(prob_score)) %>%
-  mutate(group = "Predicted Mortality by Risk Score (Not Recalibrated)") %>%
-  rbind(age_groups_sum)
-
-age_groups_sum <- age_groups %>%
-  group_by(age_group) %>%
-  summarise(mortality = mean(prob_sofa)) %>%
-  mutate(group = "Predicted Mortality by SOFA Score") %>%
-  rbind(age_groups_sum)
-
-ggplot(data=age_groups_sum, aes(x=age_group,
-                                y=mortality,
-                                fill=group)) +
-  geom_col(position="dodge",
-           color="black") +
-  scale_fill_manual(values=c("gray30", "dodgerblue", "indianred")) +
-  xlab("Age Group (years)") +
-  ylab("Life-support Episode Mortality (%)") +
-  theme_bw() +
-  theme(panel.background = element_blank(),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        axis.text = element_text(size = 14, color="black"),
-        axis.title = element_text(size = 16),
-        legend.position = c(0.25,0.8),
-        legend.title = element_blank(),
-        legend.text = element_text(size = 8, color="black"),
-        legend.direction = "vertical",
-        legend.key.width = unit(0.5, 'cm'),
-        legend.key.height = unit(0.5, 'cm'),
-        legend.spacing.y = unit(0, 'cm'),
-        legend.key = element_rect(fill="gray92"),
-        legend.background = element_rect(size=0.5, color="black", fill="gray92")
-  ) +
-  scale_x_discrete(labels=c("< 40",
-                            "40-50",
-                            "50-60",
-                            "60-70",
-                            "70-80",
-                            "> 80")) +
-  scale_y_continuous(breaks=seq(0.1, 0.9, 0.1),
-                     labels=c("10", "20", "30", "40", "50", "60", "70", "80", "90"),
-                     limits=c(0, 0.7))# +
-  #geom_text(data=score_data_tiled_gg, aes(label=mortality))
-
-ggsave(filename="Calibration_bar_byage.png")
-save(age_groups, file="age_groups_predictions.RData")
-
-```
-
 ``` {r cal_byage_recal_plot, echo=FALSE}
-# same but with age on x axis
-
-# age groups
-# observed mortality by age group
-# pred mortality by score age group
-# pred mortality by sofa age group
+# Make a similar plot but with age groups on x-axis
 
 # recalibrated 
 
@@ -1278,7 +787,7 @@ age_groups_sum <- age_groups %>%
 age_groups_sum <- age_groups %>%
   group_by(age_group) %>%
   summarise(mortality = mean(prob_score_recal)) %>%
-  mutate(group = "Predicted Mortality by Risk Score") %>%
+  mutate(group = "Predicted Mortality by APSI Score") %>%
   rbind(age_groups_sum)
 
 age_groups_sum <- age_groups %>%
@@ -1327,261 +836,17 @@ save(age_groups, file="age_groups_predictions.RData")
 
 ```
 
-``` {r cal_byage_plot_NOTRISKSCORE, echo=FALSE}
-# same but with age on x axis
-
-# age groups
-# observed mortality by age group
-# pred mortality by score age group
-# pred mortality by sofa age group
-
-age_groups <- data %>%
-  ungroup() %>%
-  select(age_years, died, prob_sofa_recal, prob_sofaage_recal) %>%
-  mutate(age_group = cut(x=age_years,
-                      breaks=c(-Inf, 40, 50, 60, 70, 80, Inf))) %>%
-  select(-age_years)
-
-age_groups_sum <- age_groups %>%
-  group_by(age_group) %>%
-  summarise(mortality = mean(died)) %>%
-  mutate(group = "Observed Mortality")
-
-age_groups_sum <- age_groups %>%
-  group_by(age_group) %>%
-  summarise(mortality = mean(prob_sofaage_recal)) %>%
-  mutate(group = "Predicted Mortality by SOFA and Age") %>%
-  rbind(age_groups_sum)
-
-age_groups_sum <- age_groups %>%
-  group_by(age_group) %>%
-  summarise(mortality = mean(prob_sofa_recal)) %>%
-  mutate(group = "Predicted Mortality by SOFA Score") %>%
-  rbind(age_groups_sum)
-
-ggplot(data=age_groups_sum, aes(x=age_group,
-                                y=mortality,
-                                fill=group)) +
-  geom_col(position="dodge",
-           color="black") +
-  scale_fill_manual(values=c("gray30", "dodgerblue", "indianred")) +
-  xlab("Age Group (years)") +
-  ylab("Life-support Episode Mortality (%)") +
-  theme_bw() +
-  theme(panel.background = element_blank(),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        axis.text = element_text(size = 14, color="black"),
-        axis.title = element_text(size = 16),
-        legend.position = c(0.25,0.8),
-        legend.title = element_blank(),
-        legend.text = element_text(size = 8, color="black"),
-        legend.direction = "vertical",
-        legend.key.width = unit(0.5, 'cm'),
-        legend.key.height = unit(0.5, 'cm'),
-        legend.spacing.y = unit(0, 'cm'),
-        legend.key = element_rect(fill="gray92"),
-        legend.background = element_rect(size=0.5, color="black", fill="gray92")
-  ) +
-  scale_x_discrete(labels=c("< 40",
-                            "40-50",
-                            "50-60",
-                            "60-70",
-                            "70-80",
-                            "> 80")) +
-  scale_y_continuous(breaks=seq(0.1, 0.9, 0.1),
-                     labels=c("10", "20", "30", "40", "50", "60", "70", "80", "90"),
-                     limits=c(0, 0.7))# +
-  #geom_text(data=score_data_tiled_gg, aes(label=mortality))
-
-ggsave(filename="Calibration_bar_NOTRISKSCORE_byage.png")
-save(age_groups, file="age_groups_NOTRISKSCORE_predictions.RData")
-
-```
-
 ``` {r hoslem}
 # perform hosmer-lemeshow test on calibration data by age groups
 
-# we will also do this manually since ResourceSelection::hoslem.test() would calculate by deciles of risk score by default instead of by age groups (which we want)
-
-# first, the default built-in H-L on risk score
+# we will use the default built-in H-L on risk score
 # g=10 --> deciles
 hoslem.test(x=data$died, y=lr_score$fitted.values, g=10)
-# this would be paired with first calibration figure (by deciles)
 
 # next, the defulat built-in H-L on SOFA lone
 hoslem.test(x=data$died, y=data$prob_sofa_recal, g=10)
-# this would also be paired with first calibration figure
-
-# now manual calculation by age groups
-# formula:
-# sum_(i=1 to i=6) ( (Observed.Dead - Expected.Dead)^2/Expected.Dead + (Observed.Alive - Expected.Alive)^2/Expected.Alive )
-
-# Age group 1 (i=1)
-Observed.Dead <- filter(data, age_years < 40) %>% pull(died) %>% sum()
-Expected.Dead <- filter(data, age_years < 40) %>% pull(prob_score) %>% sum()
-Observed.Alive <- nrow(filter(data, age_years < 40)) - Observed.Dead
-Expected.Alive <- sum(1 - (filter(data, age_years < 40) %>% pull(prob_score)))
-AgeGroup.1 <- ((Observed.Dead - Expected.Dead)**2)/Expected.Dead + ((Observed.Alive - Expected.Alive)**2)/Expected.Alive
-
-# Age group 2 (i=2)
-Observed.Dead <- filter(data, age_years >= 40 & age_years < 50) %>% pull(died) %>% sum()
-Expected.Dead <- filter(data, age_years >= 40 & age_years < 50) %>% pull(prob_score) %>% sum()
-Observed.Alive <- nrow(filter(data, age_years >= 40 & age_years < 50)) - Observed.Dead
-Expected.Alive <- sum(1 - (filter(data, age_years >= 40 & age_years < 50) %>% pull(prob_score)))
-AgeGroup.2 <- ((Observed.Dead - Expected.Dead)**2)/Expected.Dead + ((Observed.Alive - Expected.Alive)**2)/Expected.Alive
-
-# Age group 3 (i=3)
-Observed.Dead <- filter(data, age_years >= 50 & age_years < 60) %>% pull(died) %>% sum()
-Expected.Dead <- filter(data, age_years >= 50 & age_years < 60) %>% pull(prob_score) %>% sum()
-Observed.Alive <- nrow(filter(data, age_years >= 50 & age_years < 60)) - Observed.Dead
-Expected.Alive <- sum(1 - (filter(data, age_years >= 50 & age_years < 60) %>% pull(prob_score)))
-AgeGroup.3 <- ((Observed.Dead - Expected.Dead)**2)/Expected.Dead + ((Observed.Alive - Expected.Alive)**2)/Expected.Alive
-
-# Age group 4 (i=4)
-Observed.Dead <- filter(data, age_years >= 60 & age_years < 70) %>% pull(died) %>% sum()
-Expected.Dead <- filter(data, age_years >= 60 & age_years < 70) %>% pull(prob_score) %>% sum()
-Observed.Alive <- nrow(filter(data, age_years >= 60 & age_years < 70)) - Observed.Dead
-Expected.Alive <- sum(1 - (filter(data, age_years >= 60 & age_years < 70) %>% pull(prob_score)))
-AgeGroup.4 <- ((Observed.Dead - Expected.Dead)**2)/Expected.Dead + ((Observed.Alive - Expected.Alive)**2)/Expected.Alive
-
-# Age group 5 (i=5)
-Observed.Dead <- filter(data, age_years >= 70 & age_years < 80) %>% pull(died) %>% sum()
-Expected.Dead <- filter(data, age_years >= 70 & age_years < 80) %>% pull(prob_score) %>% sum()
-Observed.Alive <- nrow(filter(data, age_years >= 70 & age_years < 80)) - Observed.Dead
-Expected.Alive <- sum(1 - (filter(data, age_years >= 70 & age_years < 80) %>% pull(prob_score)))
-AgeGroup.5 <- ((Observed.Dead - Expected.Dead)**2)/Expected.Dead + ((Observed.Alive - Expected.Alive)**2)/Expected.Alive
-
-# Age group 6 (i=6)
-Observed.Dead <- filter(data, age_years >= 80) %>% pull(died) %>% sum()
-Expected.Dead <- filter(data, age_years >= 80) %>% pull(prob_score) %>% sum()
-Observed.Alive <- nrow(filter(data, age_years >= 80)) - Observed.Dead
-Expected.Alive <- sum(1 - (filter(data, age_years >= 80) %>% pull(prob_score)))
-AgeGroup.6 <- ((Observed.Dead - Expected.Dead)**2)/Expected.Dead + ((Observed.Alive - Expected.Alive)**2)/Expected.Alive
-
-# Hosmer-Lemeshow test statistic is sum of these
-HL_statistic.score <- AgeGroup.1 + AgeGroup.2 + AgeGroup.3 + AgeGroup.4 + AgeGroup.5 + AgeGroup.6
-HL_statistic.score
-
-# to get p-value, we compare HL_statistic to Chi^2 distribution with Q-2 df (Q = # of groups, here Q = 6)
-pchisq(q=HL_statistic.score, df=4, lower.tail=FALSE)
-
-# repeat with SOFA alone by age groups
-
-# Age group 1 (i=1)
-Observed.Dead <- filter(data, age_years < 40) %>% pull(died) %>% sum()
-Expected.Dead <- filter(data, age_years < 40) %>% pull(prob_sofa_recal) %>% sum()
-Observed.Alive <- nrow(filter(data, age_years < 40)) - Observed.Dead
-Expected.Alive <- sum(1 - (filter(data, age_years < 40) %>% pull(prob_sofa_recal)))
-AgeGroup.1 <- ((Observed.Dead - Expected.Dead)**2)/Expected.Dead + ((Observed.Alive - Expected.Alive)**2)/Expected.Alive
-
-# Age group 2 (i=2)
-Observed.Dead <- filter(data, age_years >= 40 & age_years < 50) %>% pull(died) %>% sum()
-Expected.Dead <- filter(data, age_years >= 40 & age_years < 50) %>% pull(prob_sofa_recal) %>% sum()
-Observed.Alive <- nrow(filter(data, age_years >= 40 & age_years < 50)) - Observed.Dead
-Expected.Alive <- sum(1 - (filter(data, age_years >= 40 & age_years < 50) %>% pull(prob_sofa_recal)))
-AgeGroup.2 <- ((Observed.Dead - Expected.Dead)**2)/Expected.Dead + ((Observed.Alive - Expected.Alive)**2)/Expected.Alive
-
-# Age group 3 (i=3)
-Observed.Dead <- filter(data, age_years >= 50 & age_years < 60) %>% pull(died) %>% sum()
-Expected.Dead <- filter(data, age_years >= 50 & age_years < 60) %>% pull(prob_sofa_recal) %>% sum()
-Observed.Alive <- nrow(filter(data, age_years >= 50 & age_years < 60)) - Observed.Dead
-Expected.Alive <- sum(1 - (filter(data, age_years >= 50 & age_years < 60) %>% pull(prob_sofa_recal)))
-AgeGroup.3 <- ((Observed.Dead - Expected.Dead)**2)/Expected.Dead + ((Observed.Alive - Expected.Alive)**2)/Expected.Alive
-
-# Age group 4 (i=4)
-Observed.Dead <- filter(data, age_years >= 60 & age_years < 70) %>% pull(died) %>% sum()
-Expected.Dead <- filter(data, age_years >= 60 & age_years < 70) %>% pull(prob_sofa_recal) %>% sum()
-Observed.Alive <- nrow(filter(data, age_years >= 60 & age_years < 70)) - Observed.Dead
-Expected.Alive <- sum(1 - (filter(data, age_years >= 60 & age_years < 70) %>% pull(prob_sofa_recal)))
-AgeGroup.4 <- ((Observed.Dead - Expected.Dead)**2)/Expected.Dead + ((Observed.Alive - Expected.Alive)**2)/Expected.Alive
-
-# Age group 5 (i=5)
-Observed.Dead <- filter(data, age_years >= 70 & age_years < 80) %>% pull(died) %>% sum()
-Expected.Dead <- filter(data, age_years >= 70 & age_years < 80) %>% pull(prob_sofa_recal) %>% sum()
-Observed.Alive <- nrow(filter(data, age_years >= 70 & age_years < 80)) - Observed.Dead
-Expected.Alive <- sum(1 - (filter(data, age_years >= 70 & age_years < 80) %>% pull(prob_sofa_recal)))
-AgeGroup.5 <- ((Observed.Dead - Expected.Dead)**2)/Expected.Dead + ((Observed.Alive - Expected.Alive)**2)/Expected.Alive
-
-# Age group 6 (i=6)
-Observed.Dead <- filter(data, age_years >= 80) %>% pull(died) %>% sum()
-Expected.Dead <- filter(data, age_years >= 80) %>% pull(prob_sofa_recal) %>% sum()
-Observed.Alive <- nrow(filter(data, age_years >= 80)) - Observed.Dead
-Expected.Alive <- sum(1 - (filter(data, age_years >= 80) %>% pull(prob_sofa_recal)))
-AgeGroup.6 <- ((Observed.Dead - Expected.Dead)**2)/Expected.Dead + ((Observed.Alive - Expected.Alive)**2)/Expected.Alive
-
-# Hosmer-Lemeshow test statistic is sum of these
-HL_statistic.sofa <- AgeGroup.1 + AgeGroup.2 + AgeGroup.3 + AgeGroup.4 + AgeGroup.5 + AgeGroup.6
-HL_statistic.sofa
-
-pchisq(q=HL_statistic.sofa, df=4, lower.tail=FALSE)
 ```
 
-``` {r avg_calibration_error_age, echo=FALSE}
-#avg % calibration error by age groups
-avg_calerror <- age_groups_sum %>%
-  filter(group == "Observed Mortality") %>%
-  rename(mortality_obs = mortality) %>%
-  select(-group)
-
-avg_calerror <- age_groups_sum %>%
-  filter(group == "Predicted Mortality by SOFA Score") %>%
-  rename(mortality_SOFA = mortality) %>%
-  full_join(avg_calerror)
-  
-avg_calerror <- age_groups_sum %>%
-  filter(group == "Predicted Mortality by Risk Score") %>%
-  rename(mortality_risk = mortality) %>%
-  bind_rows(avg_calerror)
-
-avg_calerror$mortality_obs[1:6] = avg_calerror$mortality_obs[7:12]
-
-avg_calerror <- avg_calerror %>%
-         mutate(diff = ifelse(is.na(mortality_risk), mortality_SOFA - mortality_obs, mortality_risk - mortality_obs),
-                diff_percent = diff / mortality_obs) %>%
-  select(age_group, group, diff, diff_percent) %>%
-  mutate(group = ifelse(group == "Predicted Mortality by SOFA Score", "SOFA Score", "Risk Score"))
-
-
-
-# start here
-ggplot(data=avg_calerror, aes(x=age_group,
-                                y=diff_percent,
-                                fill=group)) +
-  geom_col(position="dodge",
-           color="black") +
-  scale_fill_manual(values=c("dodgerblue", "indianred")) +
-  xlab("Age Group (years)") +
-  ylab("Average Error in Mortality Prediction") +
-  theme_bw() +
-  theme(panel.background = element_blank(),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        axis.text = element_text(size = 14, color="black"),
-        axis.title = element_text(size = 16),
-        legend.position = c(0.8,0.8),
-        legend.title = element_blank(),
-        legend.text = element_text(size = 8, color="black"),
-        legend.direction = "vertical",
-        legend.key.width = unit(0.5, 'cm'),
-        legend.key.height = unit(0.5, 'cm'),
-        legend.spacing.y = unit(0, 'cm'),
-        legend.key = element_rect(fill="gray92"),
-        legend.background = element_rect(size=0.5, color="black", fill="gray92")
-  ) +
-  scale_x_discrete(labels=c("< 40",
-                            "40-50",
-                            "50-60",
-                            "60-70",
-                            "70-80",
-                            "> 80")) +
-  scale_y_continuous(breaks=seq(-0.5, 1.25, 0.25),
-                     labels=c("-50%", "-25%", "0%", "+25%", "+50%", "+75%", "+100%", "+125%"),
-                     limits=c(-0.5, 1.15))# +
-  #geom_text(data=score_data_tiled_gg, aes(label=mortality))
-
-ggsave(filename="Calibration_error_percent_byage.png")
-```
 
 ``` {r mortality_by_race}
 
@@ -1595,7 +860,7 @@ mort_race <- data %>%
   group_by(race) %>%
   summarise(mortality = mean(prob_score_recal)) %>%
   as.data.frame() %>%
-  mutate(group = "Predicted Mortality by Risk Score") %>%
+  mutate(group = "Predicted Mortality by APSI Score") %>%
   rbind(mort_race)
 
 mort_race <- data %>%
