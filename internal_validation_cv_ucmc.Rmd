@@ -1,0 +1,296 @@
+---
+title: "internal_validation_cv_ucmc.Rmd"
+author: "Kaveri Chhikara"
+date: "2024-10-02"
+output: html_document
+---
+
+```{r load_libs, message=FALSE}
+library(ggplot2)
+library(caret)
+library(e1071)
+library(pROC)
+library(tidyverse)
+library(stargazer)
+library(knitr)
+```
+
+## Set up
+
+This script will be used to run 10-fold cross validation on UCMC data. 
+Variables should be:
+
+* encounter
+* patient_id
+* lfspprt_episode
+* sofa_total_48hr
+* age_years
+* race
+* covid
+* died
+* vent_ever
+
+In this script, the data is assumed to be 1 row per life support episode, with
+the 48-hour maximum SOFA score calculated at the beginning of the LSE.
+
+```{r}
+# Set your path to load R files and load the UCMC data
+setwd("/Users/kavenchhikara/Desktop/projects/11.Age-CSC")
+data <- read.csv("data_for_analysis.csv")
+```
+
+## Data QC
+
+```{r}
+# Function to calculate percentage of missing values
+missing_percentage <- function(data) {
+  result <- data.frame(
+    column = names(data),
+    dtype = sapply(data, class),
+    missing_percentage = sapply(data, function(x) sum(is.na(x)) / length(x) * 100)
+  )
+  return(result)
+}
+
+missing_percentage(data)
+```
+
+```{r}
+# Function to check for uniqueness of rows based on specific columns
+check_unique_rows <- function(data, columns) {
+  duplicates <- any(duplicated(data[columns]))
+  if (duplicates) {
+    duplicate_count <- sum(duplicated(data[columns]))
+    return(paste("There are", duplicate_count, "duplicate rows based on", paste(columns, collapse = ", "), "."))
+  } else {
+    return(paste("All rows are unique based on", paste(columns, collapse = ", "), "."))
+  }
+}
+
+check_unique_rows(data, c("encounter", "patient", "lfspprt_episode"))
+```
+
+```{r}
+#race categories
+data |> count(race)
+```
+
+```{r}
+# Function to check if the same patient died more than once over different encounters
+check_multiple_deaths <- function(data, patient_col, encounter_col, died_col) {
+  # Filter data where 'died' is 1 (patient died)
+  death_data <- data[data[[died_col]] == 1, ]
+  
+  # Count the number of unique encounters per patient where they died
+  death_count <- death_data %>%
+    group_by_at(patient_col) %>%
+    summarise(death_encounters = n_distinct(!!sym(encounter_col)))
+  
+  # Find patients who have more than one death encounter
+  multiple_deaths <- death_count %>% filter(death_encounters > 1)
+  
+  # Return the result
+  if (nrow(multiple_deaths) > 0) {
+    return(multiple_deaths)
+  } else {
+    return("No patient has died more than once in different encounters.")
+  }
+}
+
+check_multiple_deaths(data, "patient", "encounter", "died")
+
+```
+
+## Models
+
+```{r}
+# original models
+lr_sofa <- glm(died ~ sofa_total_48hr,
+                     data=data,
+                     family="binomial")
+lr_sofa_age <- glm(died ~ sofa_total_48hr + age_years,
+                        data = data,
+                        family="binomial")
+```
+
+```{r}
+# Define cross-validation method with class probabilities
+train_control <- trainControl(method = "cv",
+                              number = 10,
+                              savePredictions = TRUE,
+                              classProbs = TRUE)  # Enable predicted probabilities
+
+```
+
+```{r}
+# Convert 'died' to a factor with levels "0" and "1"
+# Convert 'died' to a factor with levels "No" and "Yes"
+data$died <- factor(data$died, levels = c(0, 1), labels = c("No", "Yes"))
+levels(data$died)
+```
+
+```{r}
+# Train the models
+# Model 1- SOFA alone
+set.seed(123)  # For reproducibility
+model_sofa <- train(died ~ sofa_total_48hr,
+                    data = data,
+                    method = "glm",
+                    family = binomial(),
+                    trControl = train_control)
+```
+
+```{r}
+# Model 2- SOFA and age
+set.seed(123)
+model_sofa_age <- train(died ~ sofa_total_48hr + age_years,
+                        data = data,
+                        method = "glm",
+                        family = binomial(),
+                        trControl = train_control)
+```
+
+```{r}
+# Model performance for SOFA only
+print("Model performance for SOFA only")
+print(model_sofa)
+
+# Model performance for SOFA plus Age
+print("Model performance for SOFA plus Age")
+print(model_sofa_age)
+```
+
+```{r}
+# Get predicted probabilities for the positive class ("Yes")
+probs_sofa <- model_sofa$pred$Yes[order(model_sofa$pred$rowIndex)]
+probs_sofa_age <- model_sofa_age$pred$Yes[order(model_sofa_age$pred$rowIndex)]
+
+# Get actual outcomes
+actual <- model_sofa$pred$obs[order(model_sofa$pred$rowIndex)]
+```
+
+```{r}
+# Compute ROC curves
+roc_sofa <- roc(actual, probs_sofa, levels = c("No", "Yes"), direction = "<")
+roc_sofa_age <- roc(actual, probs_sofa_age, levels = c("No", "Yes"), direction = "<")
+```
+
+```{r}
+# Plot ROC curves
+plot(roc_sofa, col = "blue", main = "ROC Curves")
+lines(roc_sofa_age, col = "red")
+legend("bottomright",
+       legend = c("SOFA Only", "SOFA + Age"),
+       col = c("blue", "red"),
+       lwd = 2)
+
+```
+
+```{r}
+# AUC values
+auc_sofa <- auc(roc_sofa)
+auc_sofa_age <- auc(roc_sofa_age)
+
+# Print AUC values
+print(paste("AUC for SOFA Only:", round(auc_sofa, 3)))
+print(paste("AUC for SOFA + Age:", round(auc_sofa_age, 3)))
+```
+
+
+```{r}
+# Calculate AUC with 95% Confidence Intervals for SOFA Only Model
+auc_sofa_ci <- ci.auc(roc_sofa, conf.level = 0.95)
+print(paste("AUC for SOFA Only Model: ", round(auc_sofa_ci[2], 3),
+            " (95% CI: ", round(auc_sofa_ci[1], 3), " - ", round(auc_sofa_ci[3], 3), ")", sep=""))
+
+# Calculate AUC with 95% Confidence Intervals for SOFA + Age Model
+auc_sofa_age_ci <- ci.auc(roc_sofa_age, conf.level = 0.95)
+print(paste("AUC for SOFA + Age Model: ", round(auc_sofa_age_ci[2], 3),
+            " (95% CI: ", round(auc_sofa_age_ci[1], 3), " - ", round(auc_sofa_age_ci[3], 3), ")", sep=""))
+
+```
+
+```{r}
+# Compute confidence intervals for ROC curves
+ci_roc_sofa <- ci.se(roc_sofa, specificities = seq(0, 1, length.out = 25), boot.n = 100000, conf.level = 0.95)
+ci_roc_sofa_age <- ci.se(roc_sofa_age, specificities = seq(0, 1, length.out = 25), boot.n = 100000, conf.level = 0.95)
+
+# Plot ROC curves with confidence intervals
+plot(roc_sofa, col = "blue", lwd = 2, main = "ROC Curves with Confidence Intervals")
+plot(ci_roc_sofa, type = "shape", col = adjustcolor("blue", alpha.f = 0.2))
+plot(roc_sofa_age, col = "red", lwd = 2, add = TRUE)
+plot(ci_roc_sofa_age, type = "shape", col = adjustcolor("red", alpha.f = 0.2))
+
+# Add legend
+legend("bottomright",
+       legend = c("SOFA Only", "SOFA Only 95% CI", "SOFA + Age", "SOFA + Age 95% CI"),
+       col = c("blue", adjustcolor("blue", alpha.f = 0.2), "red", adjustcolor("red", alpha.f = 0.2)),
+       lwd = 2,
+       fill = c(NA, adjustcolor("blue", alpha.f = 0.2), NA, adjustcolor("red", alpha.f = 0.2)),
+       border = NA)
+```
+
+
+
+```{r}
+# Perform DeLong's Test to Compare the Two ROC Curves
+delong_test <- roc.test(roc_sofa, roc_sofa_age, method = "delong", conf.level = 0.95)
+
+# Print the test results
+print(delong_test)
+```
+**p-value = 0.005395**: The p-value is less than 0.05 which indicates that there is a statistically significant difference between the two models. 
+
+**95% CI (-0.0619 -0.0107)**: The negative values indicate that the AUC of the SOFA + Age model is significantly higher than that of the SOFA only model.
+
+```{r}
+print("SOFA model Summary")
+summary(model_sofa$finalModel)
+print("SOFA+ Age model Summary")
+summary(model_sofa_age$finalModel)
+```
+
+```{r}
+# Extract summary of the SOFA only model
+summary_sofa <- summary(model_sofa$finalModel)
+
+# Extract summary of the SOFA + Age model
+summary_sofa_age <- summary(model_sofa_age$finalModel)
+
+# Extract coefficients for SOFA only model
+coef_sofa <- as.data.frame(coef(summary_sofa))
+coef_sofa$Variable <- rownames(coef_sofa)
+coef_sofa$Model <- "SOFA Only"
+
+# Reorder columns
+coef_sofa <- coef_sofa[, c("Model", "Variable", "Estimate", "Std. Error", "z value", "Pr(>|z|)")]
+
+# Extract coefficients for SOFA + Age model
+coef_sofa_age <- as.data.frame(coef(summary_sofa_age))
+coef_sofa_age$Variable <- rownames(coef_sofa_age)
+coef_sofa_age$Model <- "SOFA + Age"
+
+# Reorder columns
+coef_sofa_age <- coef_sofa_age[, c("Model", "Variable", "Estimate", "Std. Error", "z value", "Pr(>|z|)")]
+
+# Combine the coefficient data frames
+coef_combined <- rbind(coef_sofa, coef_sofa_age)
+
+# Round the numeric columns
+coef_combined$Estimate <- round(coef_combined$Estimate, 3)
+coef_combined$`Std. Error` <- round(coef_combined$`Std. Error`, 3)
+coef_combined$`z value` <- round(coef_combined$`z value`, 3)
+coef_combined$`Pr(>|z|)` <- signif(coef_combined$`Pr(>|z|)`, 3)
+```
+
+```{r}
+# Load knitr package
+
+
+# Create the table
+kable(coef_combined, caption = "Comparison of Logistic Regression Models", align = "lccccc")
+
+```
+
+
+
